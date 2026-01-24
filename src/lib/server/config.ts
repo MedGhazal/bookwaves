@@ -63,10 +63,140 @@ const DEFAULT_TAGGING_CONFIG: Required<TaggingConfig> = {
 };
 const DEFAULT_CHECKOUT_CONFIG: CheckoutConfig = { profiles: [] };
 
+const EMBEDDED_CONFIG_YAML = `# Copy this file to config.yaml and update with your actual values
+
+lms:
+  type: mock # LMS type: alma, koha, etc.
+  api_key: your_api_key # API key for authentication
+
+log_level: info # Logging level: fatal, error, warn, info, debug, trace, silent
+
+# Login flow configuration
+login:
+  mode: username_password # username_password (default) or username_only
+
+checkout:
+  profiles:
+    # The profile id is used via the checkout_profile_id URL param on checkout pages
+    - id: terminal1
+      type: alma
+      library: MAIN_LIBRARY
+      circulation_desk: SELF-CHECKOUT-CIRC1
+    - id: terminal2
+      type: alma
+      library: MAIN_LIBRARY
+      circulation_desk: SELF-CHECKOUT-CIRC2
+
+# Security gate display configuration
+gate:
+  show_all_detected_items: true # If false, only secured items are shown/warned
+
+tagging:
+  whitelist:
+    values:
+      - 'E2806894'
+      - 'E1111111' # Add additional allowed tag prefixes as needed
+
+middleware_instances:
+  #- id: feig1
+  #  type: feig # Middleware vendor/type: feig, bibliotheca, etc.
+  #  url: http://localhost:7070
+  - id: mock1
+    type: mock # Mock middleware for testing (no URL needed)
+`;
+
 let cachedConfig: LMSConfig | null = null;
 
 export function getConfig(): LMSConfig {
 	if (cachedConfig) return cachedConfig;
+
+	if (process.env.VERCEL) {
+		const data = YAML.parse(EMBEDDED_CONFIG_YAML) as LMSConfig;
+		const parsedLoginMode = data.login?.mode ?? DEFAULT_LOGIN_MODE;
+		const parsedGateConfig: GateConfig = {
+			show_all_detected_items:
+				typeof data.gate?.show_all_detected_items === 'boolean'
+					? data.gate.show_all_detected_items
+					: DEFAULT_GATE_CONFIG.show_all_detected_items
+		};
+
+		const parsedTaggingConfig: TaggingConfig = {
+			whitelist: {
+				values: Array.isArray(data.tagging?.whitelist?.values)
+					? data.tagging.whitelist.values.filter(
+							(value) => typeof value === 'string' && value.trim().length > 0
+						)
+					: DEFAULT_TAGGING_CONFIG.whitelist.values
+			}
+		};
+
+		const parseCheckoutProfiles = (): CheckoutProfileConfig[] => {
+			if (data.checkout?.profiles === undefined) return DEFAULT_CHECKOUT_CONFIG.profiles ?? [];
+
+			if (!Array.isArray(data.checkout.profiles)) {
+				throw new Error('Invalid configuration: checkout.profiles must be an array');
+			}
+
+			const lmsType = typeof data.lms?.type === 'string' ? data.lms.type : '';
+
+			return data.checkout.profiles.map((profile, index) => {
+				if (!profile || typeof profile !== 'object') {
+					throw new Error(`Invalid configuration: checkout.profiles[${index}] must be an object`);
+				}
+
+				const id = typeof profile.id === 'string' ? profile.id.trim() : '';
+				const library = typeof profile.library === 'string' ? profile.library.trim() : '';
+				const circulationDesk =
+					typeof profile.circulation_desk === 'string' ? profile.circulation_desk.trim() : '';
+				const type = typeof profile.type === 'string' ? profile.type.trim() : lmsType;
+
+				if (!id || !library || !circulationDesk) {
+					throw new Error(
+						`Invalid configuration: checkout.profiles[${index}] must include id, library, and circulation_desk`
+					);
+				}
+				if (!type) {
+					throw new Error(
+						'Invalid configuration: lms.type is required when checkout profiles are defined'
+					);
+				}
+
+				return {
+					id,
+					type,
+					library,
+					circulation_desk: circulationDesk
+				};
+			});
+		};
+
+		const parsedCheckoutConfig: CheckoutConfig = {
+			profiles: parseCheckoutProfiles()
+		};
+
+		if (data.login?.mode && !VALID_LOGIN_MODES.includes(data.login.mode)) {
+			throw new Error(
+				`Invalid configuration: login.mode must be one of ${VALID_LOGIN_MODES.join(', ')}`
+			);
+		}
+
+		if (!data.lms || !data.lms.type) {
+			throw new Error('Invalid configuration: lms.type is required');
+		}
+
+		if (!data.middleware_instances || !Array.isArray(data.middleware_instances)) {
+			throw new Error('Invalid configuration: middleware_instances must be an array');
+		}
+
+		data.log_level = parseLogLevel(data.log_level, 'info');
+		data.login = { mode: parsedLoginMode };
+		data.gate = parsedGateConfig;
+		data.tagging = parsedTaggingConfig;
+		data.checkout = parsedCheckoutConfig;
+
+		cachedConfig = data;
+		return data;
+	}
 
 	const allowMissing = process.env.ALLOW_MISSING_CONFIG === 'true';
 	const candidatePaths = [process.env.CONFIG_FILE_PATH, 'config.yaml', 'config.example.yaml']
