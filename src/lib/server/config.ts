@@ -68,13 +68,15 @@ let cachedConfig: LMSConfig | null = null;
 export function getConfig(): LMSConfig {
 	if (cachedConfig) return cachedConfig;
 
-	const configPath = process.env.CONFIG_FILE_PATH || 'config.yaml';
-	const filePath = path.resolve(configPath);
 	const allowMissing = process.env.ALLOW_MISSING_CONFIG === 'true';
+	const candidatePaths = [process.env.CONFIG_FILE_PATH, 'config.yaml', 'config.example.yaml']
+		.filter(Boolean)
+		.map((p) => path.resolve(p as string));
+	const filePath = candidatePaths.find((p) => fs.existsSync(p));
 
-	if (!fs.existsSync(filePath)) {
+	if (!filePath) {
 		if (!allowMissing) {
-			throw new Error(`Configuration file not found: ${filePath}`);
+			throw new Error('Configuration file not found: checked CONFIG_FILE_PATH, config.yaml, config.example.yaml');
 		}
 
 		// Fallback for build environments where the real config is not baked into the image.
