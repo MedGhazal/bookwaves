@@ -1,0 +1,38 @@
+services:
+  feig:
+    image: ghcr.io/lukaslerche/bookwaves-feig:latest
+    container_name: feig
+    ports:
+      - '7070:7070'
+    volumes:
+      # REQUIRED: Mount your configuration file
+      # Copy config.example.yaml to config.yaml and customize before running
+      - ./feig.yaml:/app/config/config.yaml:ro
+    restart: unless-stopped
+
+  bookwaves:
+    image: ghcr.io/lukaslerche/bookwaves:latest
+    container_name: bookwaves
+    ports:
+      - '3000:3000'
+    environment:
+      ORIGIN: http://localhost # Update to your actual domain, see https://svelte.dev/docs/kit/adapter-node#Environment-variables-ORIGIN-PROTOCOL_HEADER-HOST_HEADER-and-PORT_HEADER
+      FEIG_INTERNAL_URL: http://feig:7070 # Backend calls will use this to communicate with Feig middleware container directly (frontend calls go through nginx proxy)
+    volumes:
+      # REQUIRED: Mount your configuration file
+      # Copy config.example.yaml to config.yaml and customize before running
+      # If no config.yaml is provided, the the example config will with mock LMS and middleware is used
+      - ./bookwaves.yaml:/app/config/config.yaml:ro
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: bw-proxy
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - bookwaves
+      - feig
+    restart: unless-stopped

@@ -1,0 +1,35 @@
+{
+	"actionButtons": {
+		"loadNpmCommands": false,
+		"commands": [
+			{
+				"name": "prepare (pnpm i)",
+				"singleInstance": true,
+				"command": "pnpm i --frozen-lockfile"
+			},
+			{
+				"name": "START-DEV (pnpm dev)",
+				"singleInstance": true,
+				"command": "pnpm run dev"
+			},
+			{
+				"name": "1/3 prettier (automatisch bei git commit)",
+				"singleInstance": true,
+				"command": "pnpm run format"
+			},
+			{
+				"name": "2/3 syntax (automatisch bei git commit)",
+				"singleInstance": true,
+				"command": "pnpm run lint"
+			},
+			{
+				"name": "3/3 Svelte check (automatisch bei git push/sync)",
+				"singleInstance": true,
+				"command": "pnpm run check"
+			}
+		]
+	},
+	"files.associations": {
+		"*.css": "tailwindcss"
+	}
+}

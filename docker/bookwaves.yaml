@@ -1,0 +1,40 @@
+# Edit this file with your actual values
+
+lms:
+  type: mock # LMS type: alma, koha, etc.
+  api_key: your_api_key # API key for authentication
+
+log_level: info # Logging level: fatal, error, warn, info, debug, trace, silent
+
+# Login flow configuration
+login:
+  mode: username_password # username_password (default) or username_only
+
+checkout:
+  profiles:
+    # The profile id is used via the checkout_profile_id URL param on checkout pages
+    - id: terminal1
+      type: alma
+      library: MAIN_LIBRARY
+      circulation_desk: SELF-CHECKOUT-CIRC1
+    - id: terminal2
+      type: alma
+      library: MAIN_LIBRARY
+      circulation_desk: SELF-CHECKOUT-CIRC2
+
+# Security gate display configuration
+gate:
+  show_all_detected_items: true # If false, only secured items are shown/warned
+
+tagging:
+  whitelist:
+    values:
+      - 'E2806894'
+      - 'E1111111' # Add additional allowed tag prefixes as needed
+
+middleware_instances:
+  - id: feig1
+    type: feig # Middleware vendor/type: feig, bibliotheca, etc.
+    url: /feig # As defined in nginx proxy configuration
+  - id: mock1
+    type: mock # Mock middleware for testing (no URL needed)
