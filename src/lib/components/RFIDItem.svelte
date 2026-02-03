@@ -104,9 +104,23 @@
 >
 	<div class="card-body p-4">
 		{#if loading}
-			<div class="flex items-center gap-2">
-				<span class="loading loading-sm loading-spinner"></span>
-				<span class="text-sm opacity-60">Loading media information...</span>
+			<div class="flex items-start gap-3">
+				<div class="skeleton h-45 w-32 shrink-0 rounded-box"></div>
+				<div class="flex min-w-0 flex-1 flex-col gap-3">
+					<div class="skeleton h-5 w-3/4"></div>
+					<div class="skeleton h-4 w-1/2"></div>
+					<div class="skeleton h-3 w-2/3"></div>
+					<div class="flex flex-wrap gap-2">
+						<div class="skeleton h-5 w-16 rounded-full"></div>
+						<div class="skeleton h-5 w-20 rounded-full"></div>
+						<div class="skeleton h-5 w-24 rounded-full"></div>
+					</div>
+					<div class="flex flex-wrap gap-2">
+						<div class="skeleton h-4 w-16 rounded-full"></div>
+						<div class="skeleton h-4 w-20 rounded-full"></div>
+						<div class="skeleton h-4 w-24 rounded-full"></div>
+					</div>
+				</div>
 			</div>
 		{:else if mediaItem}
 			<!-- Media Item Information -->
@@ -114,7 +128,7 @@
 				{#if mediaItem.cover}
 					<img
 						alt={mediaItem.title}
-						class="width-32 shrink-0 rounded-box object-cover"
+						class="h-45 shrink-0 rounded-box object-cover"
 						src={mediaItem.cover}
 					/>
 				{/if}
@@ -213,11 +227,15 @@
 		{/if}
 
 		{#if !loading && !mediaItem}
-			<div class="mt-3 flex flex-col gap-2 text-center text-xs">
-				<div class="italic opacity-60">
-					{fetchError ?? 'No media information found for this RFID tag'}
+			<div class="mt-3 flex min-h-40 items-start gap-3">
+				<div class="skeleton h-45 w-32 shrink-0 rounded-box"></div>
+				<div class="flex min-w-0 flex-1 flex-col gap-2 text-xs">
+					<div class="text-sm font-semibold">Media information unavailable</div>
+					<div class="italic opacity-60">
+						{fetchError ?? 'No media information found for this RFID tag'}
+					</div>
+					<button class="btn w-full btn-outline btn-sm" onclick={fetchMediaItem}> Reload </button>
 				</div>
-				<button class="btn w-full btn-outline btn-sm" onclick={fetchMediaItem}> Reload </button>
 			</div>
 		{/if}
 	</div>
