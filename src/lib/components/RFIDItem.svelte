@@ -105,20 +105,20 @@
 	<div class="card-body p-4">
 		{#if loading}
 			<div class="flex items-start gap-3">
-				<div class="skeleton h-45 w-32 shrink-0 rounded-box"></div>
+				<div class="h-45 w-32 shrink-0 skeleton rounded-box"></div>
 				<div class="flex min-w-0 flex-1 flex-col gap-3">
-					<div class="skeleton h-5 w-3/4"></div>
-					<div class="skeleton h-4 w-1/2"></div>
-					<div class="skeleton h-3 w-2/3"></div>
+					<div class="h-5 w-3/4 skeleton"></div>
+					<div class="h-4 w-1/2 skeleton"></div>
+					<div class="h-3 w-2/3 skeleton"></div>
 					<div class="flex flex-wrap gap-2">
-						<div class="skeleton h-5 w-16 rounded-full"></div>
-						<div class="skeleton h-5 w-20 rounded-full"></div>
-						<div class="skeleton h-5 w-24 rounded-full"></div>
+						<div class="h-5 w-16 skeleton rounded-full"></div>
+						<div class="h-5 w-20 skeleton rounded-full"></div>
+						<div class="h-5 w-24 skeleton rounded-full"></div>
 					</div>
 					<div class="flex flex-wrap gap-2">
-						<div class="skeleton h-4 w-16 rounded-full"></div>
-						<div class="skeleton h-4 w-20 rounded-full"></div>
-						<div class="skeleton h-4 w-24 rounded-full"></div>
+						<div class="h-4 w-16 skeleton rounded-full"></div>
+						<div class="h-4 w-20 skeleton rounded-full"></div>
+						<div class="h-4 w-24 skeleton rounded-full"></div>
 					</div>
 				</div>
 			</div>
@@ -228,7 +228,7 @@
 
 		{#if !loading && !mediaItem}
 			<div class="mt-3 flex min-h-40 items-start gap-3">
-				<div class="skeleton h-45 w-32 shrink-0 rounded-box"></div>
+				<div class="h-45 w-32 shrink-0 skeleton rounded-box"></div>
 				<div class="flex min-w-0 flex-1 flex-col gap-2 text-xs">
 					<div class="text-sm font-semibold">Media information unavailable</div>
 					<div class="italic opacity-60">

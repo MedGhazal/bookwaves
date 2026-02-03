@@ -58,10 +58,7 @@
 			switch (event.type) {
 				case 'added':
 					clientLogger.info('New item detected:', event.item.id);
-					detectedItems = [
-						event.item,
-						...detectedItems.filter((i) => i.id !== event.item.id)
-					];
+					detectedItems = [event.item, ...detectedItems.filter((i) => i.id !== event.item.id)];
 					break;
 				case 'removed':
 					clientLogger.info('Item removed:', event.item.id);

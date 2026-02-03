@@ -73,10 +73,7 @@
 			switch (event.type) {
 				case 'added':
 					clientLogger.info('New item detected:', event.item.id);
-					detectedItems = [
-						event.item,
-						...detectedItems.filter((i) => i.id !== event.item.id)
-					];
+					detectedItems = [event.item, ...detectedItems.filter((i) => i.id !== event.item.id)];
 					// Play warning sound if item is secured
 					if (event.item.secured) {
 						playWarningSound();
