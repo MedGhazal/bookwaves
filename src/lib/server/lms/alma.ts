@@ -2,6 +2,7 @@ import type {
 	CheckoutContext,
 	LibraryManagementSystem,
 	LmsActionResult,
+	LmsReturnDirective,
 	MediaItem
 } from '../../lms/lms';
 import * as v from 'valibot';
@@ -114,6 +115,40 @@ export class AlmaLMS implements LibraryManagementSystem {
 	private params: URLSearchParams;
 	private itemCache = new Map<string, { mmsId: string; holdingId: string; itemId: string }>();
 	private checkoutProfiles = new Map<string, CheckoutProfile>();
+
+	// TODO this is still mocked
+	private buildReturnDirective(item: MediaItem): LmsReturnDirective | undefined {
+		const location = item.location?.toLowerCase() ?? '';
+		const library = item.library?.toLowerCase() ?? '';
+
+		if (location.includes('children') || library.includes('children')) {
+			return {
+				binId: 'blue',
+				label: 'Blue bin',
+				color: 'blue',
+				message: 'Place this item in the blue sorting bin',
+				sortOrder: 2
+			};
+		}
+
+		if (location.includes('fiction') || location.includes('fantasy')) {
+			return {
+				binId: 'red',
+				label: 'Red bin',
+				color: 'red',
+				message: 'Place this item in the red sorting bin',
+				sortOrder: 1
+			};
+		}
+
+		return {
+			binId: 'green',
+			label: 'Green bin',
+			color: 'green',
+			message: 'Place this item in the green sorting bin',
+			sortOrder: 3
+		};
+	}
 
 	private getCachedItem(barcode: string) {
 		const cached = this.itemCache.get(barcode);
@@ -658,7 +693,12 @@ export class AlmaLMS implements LibraryManagementSystem {
 			itemId: parsedItemData.output.item_data.pid
 		});
 
-		return { ok: true, item: mediaItem, message: 'Successfully returned' };
+		return {
+			ok: true,
+			item: mediaItem,
+			message: 'Successfully returned',
+			directive: this.buildReturnDirective(mediaItem)
+		};
 	}
 
 	// TODO this one is unimplemented in the mock LMS

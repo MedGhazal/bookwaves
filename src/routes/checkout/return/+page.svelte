@@ -11,7 +11,7 @@
 	import { createReaderFromParams } from '$lib/stores/reader-selection';
 	import type { RFIDData, RFIDReader } from '$lib/reader/interface';
 	import { returnItem } from '$lib/lms/lms.remote';
-	import type { LmsActionResult, MediaItem } from '$lib/lms/lms';
+	import type { LmsActionResult, LmsReturnDirective, MediaItem } from '$lib/lms/lms';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { clientLogger } from '$lib/client/logger';
@@ -65,6 +65,7 @@
 	type ProcessedItem = {
 		rfidData: RFIDData;
 		mediaItem: MediaItem | null;
+		directive?: LmsReturnDirective | null;
 		status: 'checking' | 'returning' | 'success' | 'failed';
 		message?: string;
 		component?: RFIDItemInstance | null; // Reference to RFIDItem component
@@ -108,6 +109,7 @@
 			addSessionItem({
 				rfidData: processed.rfidData,
 				mediaItem: null,
+				directive: null,
 				timestamp: Date.now(),
 				status: 'failed',
 				message: processed.message
@@ -137,6 +139,7 @@
 		if (result?.ok) {
 			processed.status = 'success';
 			processed.message = result.message ?? 'Successfully returned';
+			processed.directive = result.directive ?? null;
 			// Refresh the RFIDItem to show updated status
 			if (processed.component?.refresh) {
 				await processed.component.refresh();
@@ -156,6 +159,7 @@
 			addSessionItem({
 				rfidData: processed.rfidData,
 				mediaItem: itemForSession,
+				directive: result.directive ?? null,
 				timestamp: Date.now(),
 				status: 'success',
 				message: processed.message
@@ -170,6 +174,7 @@
 			addSessionItem({
 				rfidData: processed.rfidData,
 				mediaItem,
+				directive: null,
 				timestamp: Date.now(),
 				status: 'failed',
 				message: processed.message
@@ -214,6 +219,7 @@
 			processedItems = uniqueItems.map((item) => ({
 				rfidData: item.rfidData,
 				mediaItem: item.mediaItem,
+				directive: item.directive ?? null,
 				status: item.status === 'success' ? 'success' : 'failed',
 				message: item.message,
 				component: null

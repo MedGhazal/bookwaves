@@ -1,12 +1,13 @@
 import { browser } from '$app/environment';
 import type { RFIDData } from '$lib/reader/interface';
-import type { MediaItem } from '$lib/lms/lms';
+import type { LmsReturnDirective, MediaItem } from '$lib/lms/lms';
 
 export type SessionItemType = 'borrow' | 'return';
 
 export type SessionItem = {
 	rfidData: RFIDData;
 	mediaItem: MediaItem | null;
+	directive?: LmsReturnDirective | null;
 	timestamp: number;
 	status: 'success' | 'failed' | 'unavailable' | 'not-borrowed';
 	message: string;

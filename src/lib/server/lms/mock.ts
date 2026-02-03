@@ -1,4 +1,9 @@
-import type { LibraryManagementSystem, LmsActionResult, MediaItem } from '../../lms/lms';
+import type {
+	LibraryManagementSystem,
+	LmsActionResult,
+	LmsReturnDirective,
+	MediaItem
+} from '../../lms/lms';
 
 // Mock database of media items
 const mediaDatabase: Map<string, MediaItem> = new Map([
@@ -176,6 +181,39 @@ const mediaDatabase: Map<string, MediaItem> = new Map([
 
 let currentUser: string | null = null;
 
+function getMockReturnDirective(item: MediaItem): LmsReturnDirective {
+	const location = item.location?.toLowerCase() ?? '';
+	const author = item.author?.toLowerCase() ?? '';
+
+	if (location.includes('children') || author.includes('rowling')) {
+		return {
+			binId: 'blue',
+			label: 'Blue bin',
+			color: 'blue',
+			message: 'Place this item in the blue sorting bin',
+			sortOrder: 2
+		};
+	}
+
+	if (location.includes('fiction') || location.includes('fantasy')) {
+		return {
+			binId: 'red',
+			label: 'Red bin',
+			color: 'red',
+			message: 'Place this item in the red sorting bin',
+			sortOrder: 1
+		};
+	}
+
+	return {
+		binId: 'green',
+		label: 'Green bin',
+		color: 'green',
+		message: 'Place this item in the green sorting bin',
+		sortOrder: 3
+	};
+}
+
 export const mockLMS: LibraryManagementSystem = {
 	async loginUser(user: string /*, password?: string*/): Promise<boolean> {
 		// Accept any username, password is optional
@@ -251,8 +289,14 @@ export const mockLMS: LibraryManagementSystem = {
 		}
 
 		item.status = 'available';
+		const directive = getMockReturnDirective(item);
 
-		return { ok: true, item: { ...item }, message: 'Successfully returned' };
+		return {
+			ok: true,
+			item: { ...item },
+			message: 'Successfully returned',
+			directive
+		};
 	},
 
 	async getHealth(): Promise<{ result: boolean; reason?: string }> {

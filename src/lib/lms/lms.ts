@@ -20,10 +20,19 @@ export const MediaItemSchema = v.object({
 //export type MediaItem = typeof MediaItemSchema;
 export type MediaItem = v.InferOutput<typeof MediaItemSchema>;
 
+export type LmsReturnDirective = {
+	binId: string;
+	label: string;
+	color?: string;
+	message?: string;
+	sortOrder?: number;
+};
+
 export type LmsActionSuccess = {
 	ok: true;
 	item?: MediaItem;
 	message?: string;
+	directive?: LmsReturnDirective;
 };
 
 export type LmsActionFailure = {
