@@ -50,6 +50,7 @@
 	"dependencies": {
 		"@lucide/svelte": "^0.563.1",
 		"fast-xml-parser": "^5.3.4",
+		"html5-qrcode": "^2.3.8",
 		"pino": "^10.3.0",
 		"valibot": "^1.2.0",
 		"yaml": "^2.8.2"

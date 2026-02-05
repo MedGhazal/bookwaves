@@ -14,6 +14,9 @@ importers:
       fast-xml-parser:
         specifier: ^5.3.4
         version: 5.3.4
+      html5-qrcode:
+        specifier: ^2.3.8
+        version: 2.3.8
       pino:
         specifier: ^10.3.0
         version: 10.3.0
@@ -1305,6 +1308,9 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  html5-qrcode@2.3.8:
+    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
@@ -3056,6 +3062,8 @@ snapshots:
       function-bind: 1.1.2
 
   help-me@5.0.0: {}
+
+  html5-qrcode@2.3.8: {}
 
   https-proxy-agent@7.0.6:
     dependencies:

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { loginUser } from '$lib/lms/lms.remote';
 	import { setAuthUser } from '$lib/stores/auth';
 	import { CircleX } from '@lucide/svelte';
@@ -20,13 +20,91 @@
 	let password = $state('');
 	let isLoading = $state(false);
 	let errorMessage = $state('');
-	let usernameInput: HTMLInputElement | null = null;
-	const handleCancel = () => onCancel?.();
+	let usernameInput = $state<HTMLInputElement | null>(null);
+	let passwordInput = $state<HTMLInputElement | null>(null);
+	let scannerOpen = $state(false);
+	let scannerStatus = $state<'idle' | 'starting' | 'scanning' | 'error'>('idle');
+	let scannerError = $state('');
+	let scannerInstance: import('html5-qrcode').Html5Qrcode | null = null;
+	const scannerElementId = 'login-qr-reader';
+	const handleCancel = () => {
+		void stopScanner();
+		onCancel?.();
+	};
 
 	onMount(() => {
 		usernameInput?.focus();
 		usernameInput?.select();
 	});
+
+	onDestroy(() => {
+		void stopScanner();
+	});
+
+	async function startScanner() {
+		if (scannerStatus === 'starting' || scannerStatus === 'scanning') return;
+
+		scannerError = '';
+		scannerStatus = 'starting';
+		scannerOpen = true;
+
+		try {
+			await tick();
+			const { Html5Qrcode } = await import('html5-qrcode');
+			scannerInstance = scannerInstance ?? new Html5Qrcode(scannerElementId);
+
+			await scannerInstance.start(
+				{ facingMode: 'environment' },
+				{ fps: 10, qrbox: { width: 220, height: 220 } },
+				handleScanSuccess,
+				() => {}
+			);
+
+			scannerStatus = 'scanning';
+		} catch (error) {
+			scannerStatus = 'error';
+			scannerOpen = false;
+			scannerError = 'Unable to start the camera scanner.';
+			clientLogger.error('Scanner start error:', error);
+		}
+	}
+
+	async function stopScanner() {
+		try {
+			if (!scannerInstance) {
+				scannerOpen = false;
+				scannerStatus = 'idle';
+				return;
+			}
+
+			if (scannerStatus === 'scanning' || scannerStatus === 'starting') {
+				await scannerInstance.stop();
+			}
+
+			await scannerInstance.clear();
+		} catch (error) {
+			clientLogger.error('Scanner stop error:', error);
+		} finally {
+			scannerOpen = false;
+			scannerStatus = 'idle';
+		}
+	}
+
+	async function handleScanSuccess(decodedText: string) {
+		const normalized = decodedText.trim();
+		if (!normalized) return;
+
+		username = normalized;
+		await stopScanner();
+
+		if (requiresPassword) {
+			await tick();
+			passwordInput?.focus();
+			return;
+		}
+
+		void handleSubmit();
+	}
 
 	async function handleSubmit(event?: Event) {
 		event?.preventDefault();
@@ -47,6 +125,9 @@
 		errorMessage = '';
 
 		try {
+			if (scannerOpen) {
+				await stopScanner();
+			}
 			const payload = requiresPassword
 				? { user: normalizedUsername, password }
 				: { user: normalizedUsername };
@@ -120,6 +201,32 @@
 				<p class="text-xs text-base-content/60">
 					Focused for barcode scanners; press Enter to submit.
 				</p>
+				<div class="flex flex-wrap items-center gap-3">
+					<button
+						type="button"
+						class="btn btn-outline btn-sm"
+						disabled={isLoading || scannerStatus === 'starting'}
+						onclick={() => (scannerOpen ? stopScanner() : startScanner())}
+					>
+						{scannerOpen ? 'Stop camera' : 'Scan with camera'}
+					</button>
+					{#if scannerStatus === 'scanning'}
+						<span class="text-xs text-base-content/60">
+							Point the camera at a QR code or barcode.
+						</span>
+					{/if}
+				</div>
+				{#if scannerOpen}
+					<div class="mt-4 rounded-2xl border border-base-300 bg-base-200/40 p-4">
+						<div class="text-[0.7rem] font-semibold tracking-wide text-base-content/60 uppercase">
+							Camera scanner
+						</div>
+						<div id={scannerElementId} class="mt-3 overflow-hidden rounded-xl"></div>
+						{#if scannerError}
+							<p class="mt-3 text-xs text-error">{scannerError}</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 
 			{#if requiresPassword}
@@ -134,6 +241,7 @@
 						placeholder="Enter your password"
 						class="input-bordered input input-lg w-full"
 						bind:value={password}
+						bind:this={passwordInput}
 						disabled={isLoading}
 					/>
 				</div>
