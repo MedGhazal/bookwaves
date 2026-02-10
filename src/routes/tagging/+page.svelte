@@ -189,7 +189,7 @@
 	<div class="mx-auto max-w-4xl">
 		<header class="mb-12 text-center text-white">
 			<h1 class="mb-3 text-5xl font-bold drop-shadow-lg">RFID Tagging</h1>
-			<p class="text-xl opacity-90">Write book IDs to RFID tags</p>
+			<p class="text-xl opacity-90">Write barcodes to RFID tags</p>
 			<div class="mt-6 flex justify-center">
 				<ReaderSelector
 					middlewareReaders={data.middlewareReaders}
@@ -278,18 +278,19 @@
 				<div class="card-body">
 					<h2 class="mb-4 card-title text-2xl">Initialize Tag</h2>
 					<p class="mb-4 text-sm opacity-70">
-						Scan a barcode or type a book ID and press Enter to initialize the tag
+						Scan a barcode or type it and press Enter to initialize the tag
 					</p>
 
                     <div
                         class="form-control mb-4"
-                        class:hidden={data.taggingFormats.length === 1}
+                        class:hidden={data.taggingFormats.length < 2}
                     >
-                        <label class="label">
-                            <span class="label-text text-lg">Holder</span>
+                        <label class="label" for="format-select">
+                            <span class="label-text text-lg">Format</span>
                         </label>
 
                         <select
+                            id="format-select"
                             class="input-bordered input input-lg w-full"
                             bind:value={holder}
                             disabled={writing}
@@ -302,16 +303,16 @@
                         </select>
                     </div>
 					<div class="form-control mb-4">
-						<label class="label" for="book-id-input">
-							<span class="label-text text-lg">Book ID</span>
+						<label class="label" for="barcode-input">
+							<span class="label-text text-lg">Barcode</span>
 						</label>
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
-							id="book-id-input"
+							id="barcode-input"
 							type="text"
 							bind:value={input}
 							onkeypress={handleKeyPress}
-							placeholder="Scan barcode or enter book ID..."
+							placeholder="Scan barcode or enter it manually..."
 							class="input-bordered input input-lg w-full"
 							disabled={writing}
 							autofocus

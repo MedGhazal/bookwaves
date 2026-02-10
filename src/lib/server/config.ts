@@ -14,12 +14,13 @@ export interface TaggingWhitelistConfig {
 }
 
 export interface TaggingFormats {
-    name: string;
-    description: string;
+	name: string;
+	description: string;
 }
 
 export interface TaggingConfig {
 	whitelist?: TaggingWhitelistConfig;
+	formats?: TaggingFormats[];
 }
 
 export interface MiddlewareInstanceConfig {
@@ -54,7 +55,6 @@ export interface LMSConfig {
 	tagging?: TaggingConfig;
 	checkout?: CheckoutConfig;
 	middleware_instances: MiddlewareInstanceConfig[];
-    tagging_formats: TaggingFormats[];
 }
 
 const DEFAULT_LOGIN_MODE: LoginMode = 'username_password';
@@ -65,7 +65,8 @@ const DEFAULT_GATE_CONFIG: Required<GateConfig> = {
 const DEFAULT_TAGGING_CONFIG: Required<TaggingConfig> = {
 	whitelist: {
 		values: []
-	}
+	},
+	formats: []
 };
 const DEFAULT_CHECKOUT_CONFIG: CheckoutConfig = { profiles: [] };
 
@@ -103,18 +104,19 @@ tagging:
       - 'E2806894'
       - 'E1111111' # Add additional allowed tag prefixes as needed
 
+  formats:
+    - name: DE386 # Tag format
+      description: "RPTU Standort Kaiserslatern" # Human readable name
+	- name: DE290 # Tag format
+      description: "Dortmunder Format" # Human readable name
+
 middleware_instances:
   #- id: feig1
   #  type: feig # Middleware vendor/type: feig, bibliotheca, etc.
   #  url: http://localhost:7070
   - id: mock1
     type: mock # Mock middleware for testing (no URL needed)
-
-tagging_formats:
-  - name: DE386 # Tag format
-    description: "RPTU Standort Kaiserslatern" # Human readable name
 `;
-
 let cachedConfig: LMSConfig | null = null;
 
 export function getConfig(): LMSConfig {
@@ -137,7 +139,18 @@ export function getConfig(): LMSConfig {
 							(value) => typeof value === 'string' && value.trim().length > 0
 						)
 					: DEFAULT_TAGGING_CONFIG.whitelist.values
-			}
+			},
+			formats: Array.isArray(data.tagging?.formats)
+				? data.tagging.formats.filter(
+						(format) =>
+							!!format &&
+							typeof format === 'object' &&
+							typeof format.name === 'string' &&
+							format.name.trim().length > 0 &&
+							typeof format.description === 'string' &&
+							format.description.trim().length > 0
+					)
+				: DEFAULT_TAGGING_CONFIG.formats
 		};
 
 		const parseCheckoutProfiles = (): CheckoutProfileConfig[] => {
@@ -194,9 +207,9 @@ export function getConfig(): LMSConfig {
 			throw new Error('Invalid configuration: lms.type is required');
 		}
 
-        if (!data.tagging_formats || !Array.isArray(data.tagging_formats)) {
-            throw new Error('Invalid configuration for RPTU: tagging_formats must be set and be an array')
-        }
+		if (!data.tagging?.formats || !Array.isArray(data.tagging.formats)) {
+			throw new Error('Invalid configuration for RPTU: tagging.formats must be set and be an array');
+		}
 
 		if (!data.middleware_instances || !Array.isArray(data.middleware_instances)) {
 			throw new Error('Invalid configuration: middleware_instances must be an array');
@@ -232,8 +245,7 @@ export function getConfig(): LMSConfig {
 			gate: DEFAULT_GATE_CONFIG,
 			tagging: DEFAULT_TAGGING_CONFIG,
 			checkout: DEFAULT_CHECKOUT_CONFIG,
-			middleware_instances: [],
-            tagging_formats: []
+			middleware_instances: []
 		};
 		return cachedConfig;
 	}
@@ -256,7 +268,18 @@ export function getConfig(): LMSConfig {
 						(value) => typeof value === 'string' && value.trim().length > 0
 					)
 				: DEFAULT_TAGGING_CONFIG.whitelist.values
-		}
+		},
+		formats: Array.isArray(data.tagging?.formats)
+			? data.tagging.formats.filter(
+					(format) =>
+						!!format &&
+						typeof format === 'object' &&
+						typeof format.name === 'string' &&
+						format.name.trim().length > 0 &&
+						typeof format.description === 'string' &&
+						format.description.trim().length > 0
+				)
+			: DEFAULT_TAGGING_CONFIG.formats
 	};
 
     const parseCheckoutProfiles = (): CheckoutProfileConfig[] => {
@@ -317,10 +340,6 @@ export function getConfig(): LMSConfig {
 
 	if (!data.middleware_instances || !Array.isArray(data.middleware_instances)) {
 		throw new Error('Invalid configuration: middleware_instances must be an array');
-	}
-
-	if (!data.tagging_formats || !Array.isArray(data.tagging_formats)) {
-		throw new Error('Invalid configuration: tagging_formats must be an array');
 	}
 
 	data.log_level = parseLogLevel(data.log_level, 'info');
