@@ -31,6 +31,11 @@ tagging:
     values:
       - 'E2806894'
       - 'E1111111' # Add additional allowed tag prefixes as needed
+  formats:
+    - name: DE386 # Tag format
+      description: "RPTU Standort Kaiserslatern" # Human readable name
+    - name: DE290 # Tag format
+      description: "Dortmunder Format" # Human readable name
 
 middleware_instances:
   #- id: feig1
