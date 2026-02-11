@@ -11,7 +11,7 @@
 	let { data }: { data: PageData } = $props();
 
 	let input = $state('');
-    let holder = $state('');
+	let holder = $state('');
 	let reader: RFIDReader | null = $state(null);
 	let detectedItems: Array<RFIDData> = $state([]);
 	let writing = $state(false);
@@ -281,27 +281,24 @@
 						Scan a barcode or type it and press Enter to initialize the tag
 					</p>
 
-                    <div
-                        class="form-control mb-4"
-                        class:hidden={data.taggingFormats.length < 2}
-                    >
-                        <label class="label" for="format-select">
-                            <span class="label-text text-lg">Format</span>
-                        </label>
+					<div class="form-control mb-4" class:hidden={data.taggingFormats.length < 2}>
+						<label class="label" for="format-select">
+							<span class="label-text text-lg">Format</span>
+						</label>
 
-                        <select
-                            id="format-select"
-                            class="input-bordered input input-lg w-full"
-                            bind:value={holder}
-                            disabled={writing}
-                        >
-                            {#each data.taggingFormats as taggingFormat}
-                                <option value={taggingFormat.name}>
-                                    {taggingFormat.description}
-                                </option>
-                            {/each}
-                        </select>
-                    </div>
+						<select
+							id="format-select"
+							class="input-bordered input input-lg w-full"
+							bind:value={holder}
+							disabled={writing}
+						>
+							{#each data.taggingFormats as taggingFormat}
+								<option value={taggingFormat.name}>
+									{taggingFormat.description}
+								</option>
+							{/each}
+						</select>
+					</div>
 					<div class="form-control mb-4">
 						<label class="label" for="barcode-input">
 							<span class="label-text text-lg">Barcode</span>
