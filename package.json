@@ -48,7 +48,7 @@
 		]
 	},
 	"dependencies": {
-		"@lucide/svelte": "^0.563.1",
+		"@lucide/svelte": "^0.564.0",
 		"fast-xml-parser": "^5.3.5",
 		"html5-qrcode": "^2.3.8",
 		"pino": "^10.3.1",

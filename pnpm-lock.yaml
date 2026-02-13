@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@lucide/svelte':
-        specifier: ^0.563.1
-        version: 0.563.1(svelte@5.50.3)
+        specifier: ^0.564.0
+        version: 0.564.0(svelte@5.50.3)
       fast-xml-parser:
         specifier: ^5.3.5
         version: 5.3.5
@@ -529,8 +529,8 @@ packages:
   '@lix-js/server-protocol-schema@0.1.1':
     resolution: {integrity: sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ==}
 
-  '@lucide/svelte@0.563.1':
-    resolution: {integrity: sha512-Kt+MbnE5D9RsuI/csmf7M+HWxALe57x3A0DhQ8pPnnUpneh7zuldrYjlT+veWtk+tVnp5doQtaAAxLujzIlhBw==}
+  '@lucide/svelte@0.564.0':
+    resolution: {integrity: sha512-jODK/wHX3lKi1CsLgx9wXspsDQ5/WbsNmBqecdTCbaH1Cy3C/n2g3WM1a59sokjq+81eZDFUi/7Yg4rVI3kyow==}
     peerDependencies:
       svelte: ^5
 
@@ -2318,7 +2318,7 @@ snapshots:
 
   '@lix-js/server-protocol-schema@0.1.1': {}
 
-  '@lucide/svelte@0.563.1(svelte@5.50.3)':
+  '@lucide/svelte@0.564.0(svelte@5.50.3)':
     dependencies:
       svelte: 5.50.3
 
