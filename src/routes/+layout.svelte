@@ -8,7 +8,7 @@
 		data
 	}: {
 		children: Snippet;
-		data: { themeCssVars?: Record<string, string>; themeLogoUrl?: string | null };
+		data: { themeCssVars?: Record<string, string> };
 	} = $props();
 
 	let themeVarsStyle = $derived(

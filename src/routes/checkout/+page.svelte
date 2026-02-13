@@ -6,18 +6,29 @@
 
 	// Get current query string to preserve reader config
 	let queryString = $derived(page.url.search);
+	let checkoutIconThemeStyle = $derived(
+		[
+			'--bw-checkout-icon-borrow: color-mix(in oklab, var(--bw-page-checkout-to) 85%, var(--bw-page-checkout-from))',
+			'--bw-checkout-icon-return: color-mix(in oklab, var(--bw-page-checkout-to) 65%, var(--bw-page-checkout-from))',
+			'--bw-checkout-icon-list: color-mix(in oklab, var(--bw-page-checkout-to) 40%, var(--bw-page-checkout-from))',
+			'--bw-checkout-icon-account: color-mix(in oklab, var(--bw-page-checkout-from) 85%, var(--bw-page-checkout-to))'
+		].join('; ')
+	);
 </script>
 
 <div class="app-page-bg-checkout flex min-h-full flex-col items-center justify-center p-8">
 	<PageHeader title="Self-Checkout" subtitle="Please select an option to continue" showLogo />
 
-	<nav class="grid w-full max-w-6xl grid-cols-1 gap-8 lg:grid-cols-4">
+	<nav
+		class="grid w-full max-w-6xl grid-cols-1 gap-8 lg:grid-cols-4"
+		style={checkoutIconThemeStyle}
+	>
 		<NavigationCard
 			href="/checkout/borrow{queryString}"
 			title="Borrow"
 			description="Check out books"
 			icon={BookOpen}
-			iconColor="primary"
+			iconColorValue="var(--bw-checkout-icon-borrow)"
 			size="large"
 		/>
 
@@ -26,7 +37,7 @@
 			title="Return"
 			description="Return borrowed books"
 			icon={Undo2}
-			iconColor="primary"
+			iconColorValue="var(--bw-checkout-icon-return)"
 			size="large"
 		/>
 
@@ -35,7 +46,7 @@
 			title="List"
 			description="View status of books on the device"
 			icon={List}
-			iconColor="primary"
+			iconColorValue="var(--bw-checkout-icon-list)"
 			size="large"
 		/>
 
@@ -44,7 +55,7 @@
 			title="Account"
 			description="View your library account"
 			icon={User}
-			iconColor="primary"
+			iconColorValue="var(--bw-checkout-icon-account)"
 			size="large"
 		/>
 	</nav>
