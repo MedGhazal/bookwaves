@@ -18,6 +18,7 @@
 	import type { RFIDData, RFIDReader } from '$lib/reader/interface';
 	import { getSelectedReaderConfig, createReaderFromSelection } from '$lib/stores/reader-selection';
 	import { clientLogger } from '$lib/client/logger';
+	import { m } from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 	let detectedItems: Array<RFIDData> = $state([]);
@@ -141,7 +142,7 @@
 
 	async function handleClear(itemId: string) {
 		if (!reader || operationInProgress) return;
-		if (!confirm('Are you sure you want to clear all data from this tag?')) return;
+		if (!confirm(m.confirm_clear())) return;
 		operationInProgress = itemId;
 		try {
 			await reader.clear(itemId);
@@ -156,10 +157,7 @@
 
 	async function handleKill(itemId: string) {
 		if (!reader || operationInProgress) return;
-		if (
-			!confirm('Are you sure you want to permanently kill this tag? This action cannot be undone!')
-		)
-			return;
+		if (!confirm(m.confirm_kill())) return;
 		operationInProgress = itemId;
 		try {
 			await reader.kill(itemId);
@@ -174,11 +172,7 @@
 
 <div class="app-page-bg-reader min-h-full p-8">
 	<div class="mx-auto max-w-7xl">
-		<PageHeader
-			title="RFID Reader Management"
-			subtitle="Manage items detected by the RFID reader"
-			variant="compact"
-		/>
+		<PageHeader title={m.reader_label()} subtitle={m.reader_description()} variant="compact" />
 		<div class="mt-4">
 			<ReaderSelector
 				middlewareReaders={data.middlewareReaders}
@@ -199,15 +193,15 @@
 			<div class="mb-6 flex items-center justify-between">
 				<div class="text-white">
 					<span class="text-2xl font-bold">{detectedItems.length}</span>
-					<span class="ml-2 text-lg opacity-90">items detected</span>
+					<span class="ml-2 text-lg opacity-90">{m.items_detected()}</span>
 				</div>
 				<button class="btn shadow-xl btn-lg btn-accent" onclick={loadItems} disabled={loading}>
 					{#if loading}
 						<span class="loading loading-spinner"></span>
-						Loading...
+						{m.loading()}...
 					{:else}
 						<RefreshCw class="h-6 w-6" />
-						Reload Items
+						{m.reload_items()}
 					{/if}
 				</button>
 			</div>
@@ -222,18 +216,20 @@
 								</div>
 
 								<div class="flex flex-col gap-2">
-									<div class="text-sm font-semibold uppercase opacity-60">RFID Tag Actions</div>
+									<div class="text-sm font-semibold uppercase opacity-60">
+										{m.rfid_tag_actions()}
+									</div>
 
 									{#if editingItem === item.id}
 										<div class="form-control gap-2">
 											<label class="label" for={'edit-data-' + item.id}>
-												<span class="label-text">Edit Tag Barcode</span>
+												<span class="label-text">{m.edit_tag_barcode()}</span>
 											</label>
 											<textarea
 												id={'edit-data-' + item.id}
 												class="textarea-bordered textarea h-24"
 												bind:value={editData}
-												placeholder="Enter tag data..."
+												placeholder="{m.enter_tag_data()}..."
 											></textarea>
 											<div class="flex gap-2">
 												<button
@@ -244,14 +240,14 @@
 													{#if operationInProgress === item.id}
 														<span class="loading loading-xs loading-spinner"></span>
 													{/if}
-													Save
+													{m.save()}
 												</button>
 												<button
 													class="btn btn-ghost btn-sm"
 													onclick={cancelEdit}
 													disabled={operationInProgress === item.id}
 												>
-													Cancel
+													{m.cancel()}
 												</button>
 											</div>
 										</div>
@@ -268,7 +264,7 @@
 													{:else}
 														<LockOpen />
 													{/if}
-													Unsecure
+													{m.unsecure()}
 												</button>
 											{:else}
 												<button
@@ -281,7 +277,7 @@
 													{:else}
 														<Lock />
 													{/if}
-													Secure
+													{m.secure()}
 												</button>
 											{/if}
 
@@ -291,7 +287,7 @@
 												disabled={operationInProgress === item.id}
 											>
 												<SquarePen />
-												Edit
+												{m.edit()}
 											</button>
 
 											<button
@@ -304,7 +300,7 @@
 												{:else}
 													<Trash2 />
 												{/if}
-												Clear
+												{m.clear()}
 											</button>
 
 											<button
@@ -317,7 +313,7 @@
 												{:else}
 													<Skull />
 												{/if}
-												Kill Tag
+												{m.kill_tag()}
 											</button>
 										</div>
 									{/if}
@@ -329,9 +325,9 @@
 					<div class="card bg-base-100 shadow-2xl">
 						<div class="card-body items-center py-16 text-center">
 							<Monitor class="h-32 w-32 text-base-content/20" />
-							<h2 class="card-title text-2xl">No Items Detected</h2>
+							<h2 class="card-title text-2xl">{m.no_items_detected()}</h2>
 							<p class="text-base opacity-70">
-								Place items on the RFID reader and click "Reload Items"
+								{m.no_items_detected_text()}
 							</p>
 						</div>
 					</div>
@@ -340,7 +336,7 @@
 		{/if}
 
 		<div class="mt-8 flex justify-center">
-			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← Back to Home </a>
+			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← {m.back()} </a>
 		</div>
 	</div>
 

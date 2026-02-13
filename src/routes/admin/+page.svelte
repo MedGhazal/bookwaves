@@ -7,6 +7,7 @@
 	import type { MediaItem } from '$lib/lms/lms';
 	import * as lms from '$lib/lms/lms.remote';
 	import { clientLogger } from '$lib/client/logger';
+	import { m } from '$lib/paraglide/messages';
 
 	let { data }: PageProps = $props();
 	let currentSelection = $state<{ middleware: string; reader: string } | null>(null);
@@ -16,7 +17,7 @@
 	let accountResult = $state('');
 	let mediaId = $state('');
 	let mediaResult = $state<MediaItem | null>(null);
-	let lendResult = $state('');
+	let borrowResult = $state('');
 	let returnResult = $state('');
 	let testResult = $state('');
 	let feesResult = $state<number | null>(null);
@@ -45,17 +46,17 @@
 	const handleLogin = async () => {
 		await run('login', async () => {
 			const ok = await lms.loginUser({ user: username, password: password || undefined });
-			loginStatus = ok ? `Logged in as ${username}` : 'Login failed';
+			loginStatus = ok ? `${m.logged_in_as()} ${username}` : m.login_failed();
 		});
 	};
 
 	const handleLogout = async () => {
 		await run('logout', async () => {
 			await lms.logoutUser();
-			loginStatus = 'Logged out';
+			loginStatus = m.logged_out();
 			accountResult = '';
 			mediaResult = null;
-			lendResult = '';
+			borrowResult = '';
 			returnResult = '';
 			testResult = '';
 			feesResult = null;
@@ -88,10 +89,10 @@
 			});
 			if (result.ok) {
 				const title = result.item?.title || result.item?.barcode || mediaId;
-				lendResult = `Lend succeeded${title ? `: ${title}` : ''}`;
+				borrowResult = `${m.borrow_succeeded()}${title ? `: ${title}` : ''}`;
 			} else {
 				const details = result.errors?.length ? ` (${result.errors.join('; ')})` : '';
-				lendResult = `Lend failed: ${result.reason}${details}`;
+				borrowResult = `${m.borrow_failed()}: ${result.reason}${details}`;
 			}
 		});
 	};
@@ -104,10 +105,10 @@
 			});
 			if (result.ok) {
 				const title = result.item?.title || result.item?.barcode || mediaId;
-				returnResult = `Return succeeded${title ? `: ${title}` : ''}`;
+				returnResult = `${m.return_succeeded()}${title ? `: ${title}` : ''}`;
 			} else {
 				const details = result.errors?.length ? ` (${result.errors.join('; ')})` : '';
-				returnResult = `Return failed: ${result.reason}${details}`;
+				returnResult = `${m.return_failed()}: ${result.reason}${details}`;
 			}
 		});
 	};
@@ -116,8 +117,8 @@
 		await run('test', async () => {
 			const ok = await lms.getHealth();
 			testResult = ok.result
-				? 'LMS reachable'
-				: `LMS unreachable: ${ok.reason || 'unknown reason'}`;
+				? m.lms_reachable()
+				: `${m.lms_unreachable()}: ${ok.reason || 'unknown reason'}`;
 		});
 	};
 
@@ -131,20 +132,20 @@
 
 <div class="app-page-bg-admin min-h-full p-8">
 	<div class="mx-auto max-w-5xl">
-		<h1 class="mb-8 text-4xl font-bold">Admin</h1>
+		<h1 class="mb-8 text-4xl font-bold">{m.admin_label()}</h1>
 
 		<div class="grid gap-6">
 			<div class="card bg-base-100 shadow-xl">
 				<div class="card-body">
-					<h2 class="card-title text-2xl">System Configuration</h2>
+					<h2 class="card-title text-2xl">{m.system_configuration()}</h2>
 
 					<div class="mt-4 space-y-6">
 						<!-- LMS Configuration -->
 						<div>
-							<h3 class="mb-2 text-xl font-semibold">LMS Configuration</h3>
+							<h3 class="mb-2 text-xl font-semibold">{m.lms_configuration()}</h3>
 							<div class="rounded-lg bg-base-200 p-4">
 								<div class="grid grid-cols-2 gap-2">
-									<div class="font-semibold">Type:</div>
+									<div class="font-semibold">{m.type()}:</div>
 									<div>{data.lmsType}</div>
 									<div class="font-semibold">API Key:</div>
 									<div class="font-mono text-sm">
@@ -156,7 +157,7 @@
 
 						<!-- Middleware Instances & Readers -->
 						<div>
-							<h3 class="mb-2 text-xl font-semibold">Middleware Instances & Readers</h3>
+							<h3 class="mb-2 text-xl font-semibold">{m.middleware_instances()} & {m.readers()}</h3>
 							<ReaderSelector
 								middlewareReaders={data.middlewareReaders}
 								variant="detailed"
@@ -168,7 +169,7 @@
 							<div class="alert alert-info">
 								<Info />
 								<span>
-									<strong>Currently selected:</strong>
+									<strong>{m.currently_selected()}:</strong>
 									{currentSelection.middleware} - {currentSelection.reader}
 								</span>
 							</div>
@@ -181,9 +182,9 @@
 				<div class="card-body space-y-6">
 					<div class="flex items-center justify-between gap-3">
 						<div>
-							<h2 class="card-title text-2xl">LMS Test Console</h2>
+							<h2 class="card-title text-2xl">{m.lms_test_console()}</h2>
 							<p class="text-sm text-base-content/70">
-								Exercise the currently configured LMS endpoints directly from the admin area.
+								{m.lms_test_console_text()}
 							</p>
 						</div>
 						{#if busyAction}
@@ -225,9 +226,9 @@
 							</div>
 
 							<div class="rounded-lg border border-base-200 bg-base-200/50 p-4">
-								<h3 class="mb-3 text-lg font-semibold">Account</h3>
+								<h3 class="mb-3 text-lg font-semibold">{m.account()}</h3>
 								<button class="btn btn-secondary" onclick={handleAccount} disabled={!!busyAction}
-									>Get Account</button
+									>{m.get_account()}</button
 								>
 								{#if accountResult}
 									<pre
@@ -238,9 +239,9 @@
 
 						<div class="space-y-4">
 							<div class="rounded-lg border border-base-200 bg-base-200/50 p-4">
-								<h3 class="mb-3 text-lg font-semibold">Items</h3>
+								<h3 class="mb-3 text-lg font-semibold">{m.items()}</h3>
 								<label class="form-control w-full">
-									<span class="label-text font-semibold">Media / barcode</span>
+									<span class="label-text font-semibold">Media ID / Barcode</span>
 									<input
 										type="text"
 										bind:value={mediaId}
@@ -270,13 +271,13 @@
 								</div>
 								<div class="mt-2 flex flex-wrap gap-3">
 									<button class="btn btn-accent" onclick={handleMediaLookup} disabled={!!busyAction}
-										>Lookup</button
+										>{m.lookup()}</button
 									>
 									<button class="btn btn-success" onclick={handleLend} disabled={!!busyAction}
-										>Lend</button
+										>{m.borrow()}</button
 									>
 									<button class="btn btn-warning" onclick={handleReturn} disabled={!!busyAction}
-										>Return</button
+										>{m.return()}</button
 									>
 								</div>
 								{#if mediaResult}
@@ -287,8 +288,8 @@
 											2
 										)}</pre>
 								{/if}
-								{#if lendResult}
-									<p class="text-sm font-semibold text-success">{lendResult}</p>
+								{#if borrowResult}
+									<p class="text-sm font-semibold text-success">{borrowResult}</p>
 								{/if}
 								{#if returnResult}
 									<p class="text-sm font-semibold text-success">{returnResult}</p>
@@ -296,7 +297,7 @@
 							</div>
 
 							<div class="rounded-lg border border-base-200 bg-base-200/50 p-4">
-								<h3 class="mb-3 text-lg font-semibold">Utilities</h3>
+								<h3 class="mb-3 text-lg font-semibold">{m.utilities()}</h3>
 								<div class="flex flex-wrap gap-3">
 									<button class="btn btn-info" onclick={handleTestApi} disabled={!!busyAction}
 										>Test LMS API</button
@@ -306,7 +307,7 @@
 									<p class="mt-2 text-sm font-semibold text-success">{testResult}</p>
 								{/if}
 								{#if feesResult !== null}
-									<p class="mt-1 text-sm font-semibold text-success">Fees: {feesResult}</p>
+									<p class="mt-1 text-sm font-semibold text-success">{m.fees()}: {feesResult}</p>
 								{/if}
 							</div>
 						</div>

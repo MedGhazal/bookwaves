@@ -7,6 +7,7 @@
 	import { Circle, CircleX, SquarePen } from '@lucide/svelte';
 	import { clientLogger } from '$lib/client/logger';
 	import MockReaderOverlay from '$lib/components/MockReaderOverlay.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -188,8 +189,8 @@
 <div class="app-page-bg-tagging min-h-full p-8">
 	<div class="mx-auto max-w-4xl">
 		<header class="mb-12 text-center text-white">
-			<h1 class="mb-3 text-5xl font-bold drop-shadow-lg">RFID Tagging</h1>
-			<p class="text-xl opacity-90">Write barcodes to RFID tags</p>
+			<h1 class="mb-3 text-5xl font-bold drop-shadow-lg">{m.tagging_label()}</h1>
+			<p class="text-xl opacity-90">{m.tagging_description()}</p>
 			<div class="mt-6 flex justify-center">
 				<ReaderSelector
 					middlewareReaders={data.middlewareReaders}
@@ -202,15 +203,15 @@
 			<div class="mb-8 alert alert-error shadow-lg">
 				<CircleX />
 				<div>
-					<h3 class="font-bold">Reader Error</h3>
+					<h3 class="font-bold">Reader {m.error()}</h3>
 					<div class="text-sm">{readerError}</div>
 				</div>
-				<button class="btn btn-sm" onclick={initializeReader}>Retry</button>
+				<button class="btn btn-sm" onclick={initializeReader}>{m.retry()}</button>
 			</div>
 		{:else}
 			<div class="card mb-6 bg-base-100 shadow-2xl">
 				<div class="card-body">
-					<h2 class="mb-4 card-title text-2xl">Tag Detection Status</h2>
+					<h2 class="mb-4 card-title text-2xl">{m.tag_detection_status_heading()}</h2>
 					<div class="flex items-center gap-4">
 						<div
 							class="badge badge-lg {detectedItems.length === 1
@@ -226,20 +227,21 @@
 									: '✗ No Tag'}
 						</div>
 						<span class="text-sm opacity-70">
-							{detectedItems.length} tag{detectedItems.length !== 1 ? 's' : ''} detected
+							{detectedItems.length} tag{detectedItems.length !== 1 ? 's' : ''}
+							{m.detected()}
 						</span>
 
 						{#if whitelistEnabled}
 							<div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
 								<span class="badge badge-outline badge-primary">Whitelist active</span>
-								<span class="opacity-70">Allowed prefixes: {whitelistValues.join(', ')}</span>
+								<span class="opacity-70">{m.allowed_prefixes()}: {whitelistValues.join(', ')}</span>
 							</div>
 						{/if}
 					</div>
 
 					{#if detectedItems.length === 1}
 						<div class="mt-4 rounded-lg bg-base-200 p-4">
-							<div class="mb-2 text-sm font-semibold opacity-60">Current Tag on Reader</div>
+							<div class="mb-2 text-sm font-semibold opacity-60">{m.current_tag_on_reader()}</div>
 							<div class="flex items-center gap-2">
 								<div class="font-mono text-lg">{detectedItems[0].id}</div>
 								{#if whitelistEnabled}
@@ -252,7 +254,7 @@
 							</div>
 							{#if detectedItems[0].data}
 								<div class="mt-2 text-sm">
-									<span class="opacity-60">Current Data:</span>
+									<span class="opacity-60">{m.current_data()}:</span>
 									<span class="ml-2 font-semibold">{detectedItems[0].data}</span>
 								</div>
 							{/if}
@@ -263,10 +265,9 @@
 						<div class="mt-4 alert alert-warning">
 							<Circle />
 							<div>
-								<h3 class="font-bold">Tag not on whitelist</h3>
+								<h3 class="font-bold">{m.tag_not_on_whitelist()}</h3>
 								<div class="text-sm">
-									This tag does not match the configured whitelist. Check your prefixes or enable
-									the override below to proceed.
+									{m.tag_not_on_whitelist_text()}
 								</div>
 							</div>
 						</div>
@@ -276,9 +277,9 @@
 
 			<div class="card bg-base-100 shadow-2xl">
 				<div class="card-body">
-					<h2 class="mb-4 card-title text-2xl">Initialize Tag</h2>
+					<h2 class="mb-4 card-title text-2xl">{m.initialize_tag()}</h2>
 					<p class="mb-4 text-sm opacity-70">
-						Scan a barcode or type it and press Enter to initialize the tag
+						{m.initialize_tag_text()}
 					</p>
 
 					<div class="form-control mb-4" class:hidden={data.taggingFormats.length < 2}>
@@ -309,7 +310,7 @@
 							type="text"
 							bind:value={input}
 							onkeypress={handleKeyPress}
-							placeholder="Scan barcode or enter it manually..."
+							placeholder="{m.scan_barcode_or()}..."
 							class="input-bordered input input-lg w-full"
 							disabled={writing}
 							autofocus
@@ -323,7 +324,7 @@
 								class="checkbox checkbox-sm"
 								bind:checked={overrideWhitelist}
 							/>
-							<span class="opacity-80">Override whitelist for this write</span>
+							<span class="opacity-80">{m.override_whitelist()}</span>
 						</label>
 					{/if}
 
@@ -334,10 +335,10 @@
 					>
 						{#if writing}
 							<span class="loading loading-spinner"></span>
-							Initializing...
+							{m.initializing()}...
 						{:else}
 							<SquarePen />
-							Initialize Tag
+							{m.initialize_tag()}
 						{/if}
 					</button>
 
@@ -354,7 +355,7 @@
 		{/if}
 
 		<div class="mt-8 flex justify-center">
-			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← Back to Home </a>
+			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← {m.back()} </a>
 		</div>
 	</div>
 	<MockReaderOverlay />

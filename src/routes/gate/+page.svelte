@@ -9,6 +9,7 @@
 	import { createReaderFromParams } from '$lib/stores/reader-selection';
 	import type { RFIDData } from '$lib/reader/interface';
 	import { clientLogger } from '$lib/client/logger';
+	import { m } from '$lib/paraglide/messages';
 
 	let { data }: PageProps = $props();
 
@@ -17,9 +18,9 @@
 	let visibleItems = $derived(
 		showAllDetectedItems ? detectedItems : detectedItems.filter((item) => item.secured)
 	);
-	let listTitle = $derived(showAllDetectedItems ? 'Detected Items' : 'Secured Items');
+	let listTitle = $derived(showAllDetectedItems ? m.detected_items() : m.secured_items());
 	let emptyMessage = $derived(
-		showAllDetectedItems ? 'No items detected' : 'No secured items detected'
+		showAllDetectedItems ? m.no_items_detected() : m.no_secured_items_detected()
 	);
 	let readerUnsubscribe: (() => void) | null = null;
 	let audioElement: HTMLAudioElement | null = null;
@@ -110,8 +111,9 @@
 		{#if readerWarning}
 			<div class="mb-6 alert alert-warning shadow-lg">
 				<div>
-					<strong>Reader not configured.</strong>
-					{readerWarning} Contact IT/library staff.
+					<strong>{m.reader_not_configured()}.</strong>
+					{readerWarning}
+					{m.contact_staff()}.
 				</div>
 
 				<a
@@ -134,21 +136,21 @@
 					class="flex animate-pulse items-center gap-3 rounded-box border-4 border-white bg-error px-10 py-5 text-3xl font-bold text-white shadow-2xl"
 				>
 					<ShieldAlert class="h-12 w-12" />
-					<span>SECURED ITEM DETECTED</span>
+					<span>{m.secured_item_detected()}</span>
 				</div>
 			{:else if detectedItems.length > 0}
 				<div
 					class="flex items-center gap-3 rounded-box border-4 border-white bg-success px-10 py-5 text-3xl font-bold text-white shadow-2xl"
 				>
 					<CheckCircle class="h-10 w-10" />
-					<span>ALL CLEAR</span>
+					<span>{m.all_clear()}</span>
 				</div>
 			{:else}
 				<div
 					class="flex items-center gap-3 rounded-box border-4 border-white/50 bg-base-300 px-10 py-5 text-3xl font-bold opacity-80 shadow-2xl"
 				>
 					<Eye class="h-10 w-10" />
-					<span>MONITORING</span>
+					<span>{m.monitoring()}</span>
 				</div>
 			{/if}
 		</div>
@@ -177,8 +179,8 @@
 								<p class="text-3xl font-semibold">{emptyMessage}</p>
 								<p class="text-xl">
 									{showAllDetectedItems
-										? 'Gate is clear for passage'
-										: 'No secured items require attention'}
+										? m.gate_is_clear()
+										: m.no_secured_items_require_attention()}
 								</p>
 							</div>
 						</li>
@@ -191,8 +193,8 @@
 			<div class="mt-8 alert border-4 border-white alert-error text-white shadow-2xl">
 				<AlertTriangle class="h-16 w-16 shrink-0" />
 				<div>
-					<p class="text-4xl font-bold">PLEASE RETURN TO DESK</p>
-					<p class="mt-2 text-2xl">One or more items need to be processed</p>
+					<p class="text-4xl font-bold">{m.please_return_to_desk()}</p>
+					<p class="mt-2 text-2xl">{m.please_return_to_desk_text()}</p>
 				</div>
 			</div>
 		{/if}
