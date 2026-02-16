@@ -4,6 +4,8 @@
 	import { setAuthUser } from '$lib/stores/auth';
 	import { CircleX } from '@lucide/svelte';
 	import { clientLogger } from '$lib/client/logger';
+	import { m } from '$lib/paraglide/messages';
+	import { mockRFIDReader } from '$lib/reader/mock';
 
 	type LoginMode = 'username_password' | 'username_only';
 
@@ -157,19 +159,19 @@
 				<div
 					class="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold tracking-wide text-primary uppercase"
 				>
-					<span>{requiresPassword ? 'Username + password' : 'Username only'}</span>
+					<span>{requiresPassword ? m.username_password() : m.usename_only()}</span>
 				</div>
-				<h3 class="text-3xl leading-tight font-black">Login Required</h3>
+				<h3 class="text-3xl leading-tight font-black">{m.login_required()}</h3>
 				<p class="mt-2 text-base-content/70">
 					{requiresPassword
-						? 'Enter your username and password to continue.'
-						: 'Scan your ID or enter your username, then press Enter to continue.'}
+						? m.username_password_description()
+						: m.password_only_description()}
 				</p>
 			</div>
 			<div
 				class="rounded-2xl bg-base-200/70 px-3 py-2 text-xs font-semibold tracking-wide text-base-content/70 uppercase"
 			>
-				HID ready
+				{m.hid_ready()}
 			</div>
 		</div>
 
@@ -185,21 +187,21 @@
 		<form class="mt-6 space-y-5" onsubmit={handleSubmit}>
 			<div class="form-control gap-2">
 				<label class="label" for="username">
-					<span class="label-text text-sm font-semibold">Username / Barcode</span>
+					<span class="label-text text-sm font-semibold">{m.username()} / Barcode</span>
 				</label>
 				<input
 					id="username"
 					type="text"
 					inputmode="text"
 					autocomplete="username"
-					placeholder="Scan or type your username"
+					placeholder={m.scan_or_type_your_username()}
 					class="input-bordered input input-lg w-full"
 					bind:this={usernameInput}
 					bind:value={username}
 					disabled={isLoading}
 				/>
 				<p class="text-xs text-base-content/60">
-					Focused for barcode scanners; press Enter to submit.
+					{m.focused_for_text()}
 				</p>
 				<div class="flex flex-wrap items-center gap-3">
 					<button
@@ -208,18 +210,18 @@
 						disabled={isLoading || scannerStatus === 'starting'}
 						onclick={() => (scannerOpen ? stopScanner() : startScanner())}
 					>
-						{scannerOpen ? 'Stop camera' : 'Scan with camera'}
+						{scannerOpen ? m.stop_camera() : m.start_with_camera()}
 					</button>
 					{#if scannerStatus === 'scanning'}
 						<span class="text-xs text-base-content/60">
-							Point the camera at a QR code or barcode.
+							m.point_the_camera()
 						</span>
 					{/if}
 				</div>
 				{#if scannerOpen}
 					<div class="mt-4 rounded-2xl border border-base-300 bg-base-200/40 p-4">
 						<div class="text-[0.7rem] font-semibold tracking-wide text-base-content/60 uppercase">
-							Camera scanner
+							{m.camera_scanner()}
 						</div>
 						<div id={scannerElementId} class="mt-3 overflow-hidden rounded-xl"></div>
 						{#if scannerError}
@@ -232,13 +234,13 @@
 			{#if requiresPassword}
 				<div class="form-control gap-2">
 					<label class="label" for="password">
-						<span class="label-text text-sm font-semibold">Password / PIN</span>
+						<span class="label-text text-sm font-semibold">{m.password()} / PIN</span>
 					</label>
 					<input
 						id="password"
 						type="password"
 						autocomplete="current-password"
-						placeholder="Enter your password"
+						placeholder={m.enter_your_password()}
 						class="input-bordered input input-lg w-full"
 						bind:value={password}
 						bind:this={passwordInput}
@@ -259,9 +261,9 @@
 				<button class="btn px-6 btn-lg btn-primary" type="submit" disabled={isLoading}>
 					{#if isLoading}
 						<span class="loading loading-spinner"></span>
-						Logging in...
+						{m.logging_in()}...
 					{:else}
-						Login
+						{m.login()}
 					{/if}
 				</button>
 			</div>
