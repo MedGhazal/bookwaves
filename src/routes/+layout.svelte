@@ -1,5 +1,5 @@
 <script lang="ts">
-	import '../app.css';
+	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import type { Snippet } from 'svelte';
 	import { setLocale } from '$lib/paraglide/runtime';
@@ -19,9 +19,7 @@
 	);
 </script>
 
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
+<svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <div class="h-screen overflow-y-auto" style={themeVarsStyle}>
 	<div class="fixed top-4 left-4 z-50 flex gap-2">
