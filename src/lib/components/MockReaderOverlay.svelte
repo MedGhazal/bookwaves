@@ -54,6 +54,8 @@
 				inventory = inventory.filter((item) => item.id !== event.item.id);
 				break;
 			case 'updated':
+			case 'stable':
+			case 'unstable':
 				inventory = inventory.map((item) => (item.id === event.item.id ? event.item : item));
 				break;
 		}

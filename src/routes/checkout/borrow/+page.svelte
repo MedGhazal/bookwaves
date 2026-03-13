@@ -72,6 +72,8 @@
 	type ProcessedItem = {
 		rfidData: RFIDData;
 		mediaItem: MediaItem | null;
+		mediaResolved: boolean;
+		actionReady: boolean;
 		status: 'checking' | 'lending' | 'success' | 'failed';
 		message?: string;
 		component?: RFIDItemInstance | null; // Reference to RFIDItem component
@@ -97,6 +99,23 @@
 	async function handleMediaItemLoaded(processed: ProcessedItem, mediaItem: MediaItem | null) {
 		if (processed.status !== 'checking') return;
 
+		processed.mediaResolved = true;
+		processed.mediaItem = mediaItem;
+
+		if (!processed.actionReady) {
+			processed.message = 'Detected. Waiting for stable signal...';
+			processedItems = [...processedItems];
+			return;
+		}
+
+		await attemptBorrow(processed);
+	}
+
+	async function attemptBorrow(processed: ProcessedItem) {
+		if (processed.status !== 'checking' || !processed.actionReady || !processed.mediaResolved) {
+			return;
+		}
+
 		if (workflowWarning) {
 			processed.status = 'failed';
 			processed.message = workflowWarning ?? undefined;
@@ -104,8 +123,7 @@
 			return;
 		}
 
-		// Store media item reference
-		processed.mediaItem = mediaItem;
+		const mediaItem = processed.mediaItem;
 
 		if (!mediaItem) {
 			processed.status = 'failed';
@@ -188,11 +206,17 @@
 		currentSession = getCheckoutSession();
 	}
 
-	function processItem(rfidData: RFIDData) {
+	function processItem(rfidData: RFIDData, actionReady: boolean) {
 		const identity = getItemIdentity(rfidData);
+		const existing = processedItems.find((p) => getItemIdentity(p.rfidData) === identity);
 
-		// Check if already processed using stable identity (ignores secured flips)
-		if (processedItems.some((p) => getItemIdentity(p.rfidData) === identity)) {
+		if (existing) {
+			existing.rfidData = rfidData;
+			existing.actionReady = existing.actionReady || actionReady;
+			if (existing.status === 'checking' && existing.actionReady && existing.mediaResolved) {
+				void attemptBorrow(existing);
+			}
+			processedItems = [...processedItems];
 			return;
 		}
 
@@ -200,8 +224,10 @@
 		const processed: ProcessedItem = {
 			rfidData,
 			mediaItem: null,
+			mediaResolved: false,
+			actionReady,
 			status: 'checking',
-			message: 'Preparing to borrow...'
+			message: actionReady ? 'Preparing to borrow...' : 'Detected. Waiting for stable signal...'
 		};
 		processedItems = [processed, ...processedItems];
 	}
@@ -221,6 +247,8 @@
 				processedItems = uniqueItems.map((item) => ({
 					rfidData: item.rfidData,
 					mediaItem: item.mediaItem,
+					mediaResolved: true,
+					actionReady: true,
 					status: item.status === 'success' ? 'success' : 'failed',
 					message: item.message,
 					component: null
@@ -263,8 +291,15 @@
 			clientLogger.debug('Item:', event.item);
 
 			if (event.type === 'added') {
-				clientLogger.info('New item detected:', event.item.id);
-				processItem(event.item);
+				const actionReady =
+					typeof event.item.stable === 'undefined' ? true : event.item.stable === true;
+				processItem(event.item, actionReady);
+				return;
+			}
+
+			if (event.type === 'stable') {
+				clientLogger.info('Borrow became stable:', event.item.id);
+				processItem(event.item, true);
 			}
 		});
 	}
