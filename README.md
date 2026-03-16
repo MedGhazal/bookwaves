@@ -101,7 +101,7 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 ##### Prerequisite:
 
 - You have BookWaves running and accessible from your local Browser
-- BooWaves uses an **HTTPs** URL (self-signed certificates are supported)
+- BookWaves uses an **HTTPs** URL (self-signed certificates are supported)
 
 ##### Integration Profile Setup:
 
