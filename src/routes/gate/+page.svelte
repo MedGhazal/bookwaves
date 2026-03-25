@@ -85,6 +85,8 @@
 					detectedItems = detectedItems.filter((i) => i.id !== event.item.id);
 					break;
 				case 'updated':
+				case 'stable':
+				case 'unstable':
 					clientLogger.info('Item updated:', event.item.id);
 					detectedItems = detectedItems.map((i) => (i.id === event.item.id ? event.item : i));
 					break;

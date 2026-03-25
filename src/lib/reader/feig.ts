@@ -147,10 +147,36 @@ const AnalyzeResponseSchema = v.object({
 
 type AnalyzeResponse = v.InferOutput<typeof AnalyzeResponseSchema>;
 
+const NotificationRssiValueSchema = v.object({
+	antenna: v.optional(v.number()),
+	antennaNumber: v.optional(v.number()),
+	rssi: v.number()
+});
+
+const NotificationTagEventSchema = v.object({
+	readerName: v.optional(v.string()),
+	timestamp: v.optional(v.string()),
+	eventType: v.optional(v.string()),
+	epc: v.string(),
+	tagType: v.optional(v.string()),
+	mediaId: v.optional(v.string()),
+	secured: v.optional(v.boolean()),
+	pc: v.optional(v.string()),
+	rssiValues: v.optional(v.array(NotificationRssiValueSchema)),
+	readerTimestamp: v.optional(v.string()),
+	stable: v.optional(v.boolean()),
+	seenCount: v.optional(v.number()),
+	presenceDurationMs: v.optional(v.number()),
+	bestRssi: v.optional(v.number())
+});
+
+type NotificationTagEvent = v.InferOutput<typeof NotificationTagEventSchema>;
+
 export class FeigRFIDReader implements RFIDReader {
 	private baseUrl: string;
 	private readerName: string;
 	private monitoringInterval?: NodeJS.Timeout;
+	private eventSource?: EventSource;
 	private callbacks: Set<RFIDEventCallback> = new Set();
 	private lastKnownItems: Map<string, RFIDData> = new Map();
 
@@ -185,35 +211,24 @@ export class FeigRFIDReader implements RFIDReader {
 	}
 
 	startMonitoring(callback: RFIDEventCallback): () => void {
+		const hadSubscribers = this.callbacks.size > 0;
 		this.callbacks.add(callback);
 
-		// Poll inventory every 2 seconds
-		if (!this.monitoringInterval) {
-			this.monitoringInterval = setInterval(async () => {
-				try {
-					const currentItems = await this.inventory();
-					this.detectChanges(currentItems);
-				} catch (error) {
-					clientLogger.error('Monitoring error:', error);
-				}
-			}, 2000);
+		if (!hadSubscribers) {
+			this.startSseMonitoring();
 		}
 
 		// Return unsubscribe function
 		return () => {
 			this.callbacks.delete(callback);
-			if (this.callbacks.size === 0 && this.monitoringInterval) {
-				clearInterval(this.monitoringInterval);
-				this.monitoringInterval = undefined;
+			if (this.callbacks.size === 0) {
+				this.stopAllMonitoringTransports();
 			}
 		};
 	}
 
 	async stopMonitoring(): Promise<void> {
-		if (this.monitoringInterval) {
-			clearInterval(this.monitoringInterval);
-			this.monitoringInterval = undefined;
-		}
+		this.stopAllMonitoringTransports();
 		this.callbacks.clear();
 		this.lastKnownItems.clear();
 	}
@@ -226,8 +241,10 @@ export class FeigRFIDReader implements RFIDReader {
 		secured?: boolean;
 	}> {
 		try {
+			const useNotificationEndpoint = await this.isNotificationMode();
+			const endpoint = useNotificationEndpoint ? 'notification/secure' : 'secure';
 			const response = await fetch(
-				`${this.baseUrl}/secure/${this.readerName}?epc=${encodeURIComponent(epc)}`,
+				`${this.baseUrl}/${endpoint}/${this.readerName}?epc=${encodeURIComponent(epc)}`,
 				{ method: 'POST' }
 			);
 
@@ -257,8 +274,10 @@ export class FeigRFIDReader implements RFIDReader {
 		secured?: boolean;
 	}> {
 		try {
+			const useNotificationEndpoint = await this.isNotificationMode();
+			const endpoint = useNotificationEndpoint ? 'notification/unsecure' : 'unsecure';
 			const response = await fetch(
-				`${this.baseUrl}/unsecure/${this.readerName}?epc=${encodeURIComponent(epc)}`,
+				`${this.baseUrl}/${endpoint}/${this.readerName}?epc=${encodeURIComponent(epc)}`,
 				{ method: 'POST' }
 			);
 
@@ -560,6 +579,208 @@ export class FeigRFIDReader implements RFIDReader {
 	private normalizeAntennas(antennas: number | number[]): number[] {
 		return FeigRFIDReader.normalizeAntennas(antennas);
 	}
+
+	private async isNotificationMode(): Promise<boolean> {
+		if (this.eventSource) {
+			return true;
+		}
+
+		try {
+			const status = await this.getStatus();
+			const mode = status.mode?.toLowerCase();
+			return status.notificationActive === true || mode === 'notification';
+		} catch {
+			return false;
+		}
+	}
+
+	private startSseMonitoring(): void {
+		if (!browser || typeof window === 'undefined' || typeof EventSource === 'undefined') {
+			this.startPollingFallback();
+			return;
+		}
+
+		if (this.eventSource) {
+			return;
+		}
+
+		const streamUrl = `${this.baseUrl}/notification/stream/${this.readerName}`;
+		const source = new EventSource(streamUrl);
+		this.eventSource = source;
+
+		source.addEventListener('connected', () => {
+			clientLogger.debug('Connected to Feig notification stream', {
+				readerName: this.readerName
+			});
+		});
+
+		source.addEventListener('tag', (event) => {
+			this.handleSseTagEvent(event, 'tag');
+		});
+
+		source.addEventListener('tag_stable', (event) => {
+			this.handleSseTagEvent(event, 'tag_stable');
+		});
+
+		source.addEventListener('tag_unstable', (event) => {
+			this.handleSseTagEvent(event, 'tag_unstable');
+		});
+
+		source.addEventListener('tag_removed', (event) => {
+			this.handleSseTagEvent(event, 'tag_removed');
+		});
+
+		source.addEventListener('identification', (event) => {
+			clientLogger.debug('Feig identification event received', {
+				readerName: this.readerName,
+				data: (event as MessageEvent).data
+			});
+		});
+
+		source.addEventListener('error', (event) => {
+			clientLogger.warn('Feig notification stream error', {
+				readerName: this.readerName,
+				readyState: source.readyState,
+				event
+			});
+		});
+	}
+
+	private startPollingFallback(): void {
+		if (this.monitoringInterval) {
+			return;
+		}
+
+		this.monitoringInterval = setInterval(async () => {
+			try {
+				const currentItems = await this.inventory();
+				this.detectChanges(currentItems);
+			} catch (error) {
+				clientLogger.error('Monitoring error:', error);
+			}
+		}, 2000);
+	}
+
+	private stopAllMonitoringTransports(): void {
+		if (this.eventSource) {
+			this.eventSource.close();
+			this.eventSource = undefined;
+		}
+
+		if (this.monitoringInterval) {
+			clearInterval(this.monitoringInterval);
+			this.monitoringInterval = undefined;
+		}
+	}
+
+	private handleSseTagEvent(
+		event: Event,
+		sseType: 'tag' | 'tag_stable' | 'tag_unstable' | 'tag_removed'
+	): void {
+		const messageEvent = event as MessageEvent;
+		if (!messageEvent.data) {
+			return;
+		}
+
+		try {
+			const parsedJson = JSON.parse(messageEvent.data);
+			const parsed = v.safeParse(NotificationTagEventSchema, parsedJson);
+			if (!parsed.success) {
+				clientLogger.warn('Invalid Feig SSE tag payload', parsed.issues);
+				return;
+			}
+
+			const item = this.convertNotificationToRFIDData(parsed.output);
+			const previous = this.lastKnownItems.get(item.id);
+			const mappedType = this.mapNotificationEventType(sseType, parsed.output.eventType);
+
+			if (mappedType === 'removed') {
+				this.lastKnownItems.delete(item.id);
+				this.notifyCallbacks({ type: 'removed', item: previous ?? item });
+				return;
+			}
+
+			this.lastKnownItems.set(item.id, item);
+
+			if (mappedType === 'stable' || mappedType === 'unstable') {
+				this.notifyCallbacks({ type: mappedType, item });
+				return;
+			}
+
+			if (!previous) {
+				this.notifyCallbacks({ type: 'added', item });
+				return;
+			}
+
+			if (this.hasChanged(previous, item)) {
+				this.notifyCallbacks({ type: 'updated', item });
+			}
+		} catch (error) {
+			clientLogger.error('Failed to handle Feig SSE tag event:', error);
+		}
+	}
+
+	private mapNotificationEventType(
+		sseType: 'tag' | 'tag_stable' | 'tag_unstable' | 'tag_removed',
+		payloadEventType?: string
+	): 'added' | 'removed' | 'stable' | 'unstable' {
+		const normalizedPayloadType = payloadEventType?.toUpperCase();
+
+		if (sseType === 'tag_removed' || normalizedPayloadType === 'TAG_REMOVED') {
+			return 'removed';
+		}
+
+		if (sseType === 'tag_stable' || normalizedPayloadType === 'TAG_STABLE') {
+			return 'stable';
+		}
+
+		if (sseType === 'tag_unstable' || normalizedPayloadType === 'TAG_UNSTABLE') {
+			return 'unstable';
+		}
+
+		return 'added';
+	}
+
+	private convertNotificationToRFIDData(event: NotificationTagEvent): RFIDData {
+		const antennaRssi = event.rssiValues?.map((rssiValue) => ({
+			antennaNumber: rssiValue.antennaNumber ?? rssiValue.antenna ?? 0,
+			rssi: rssiValue.rssi
+		}));
+
+		const timestamp = this.parseNotificationTimestamp(event.timestamp ?? event.readerTimestamp);
+		const previous = this.lastKnownItems.get(event.epc);
+
+		return {
+			id: event.epc,
+			data: event.mediaId ?? previous?.data,
+			mediaId: event.mediaId ?? previous?.mediaId,
+			tagType: event.tagType ?? previous?.tagType,
+			pc: event.pc ?? previous?.pc,
+			rssi: this.calculateAverageRssi(antennaRssi),
+			timestamp,
+			secured: event.secured ?? previous?.secured,
+			antennaRssi,
+			stable: event.stable,
+			seenCount: event.seenCount,
+			presenceDurationMs: event.presenceDurationMs,
+			bestRssi: event.bestRssi
+		};
+	}
+
+	private parseNotificationTimestamp(timestamp?: string): Date {
+		if (!timestamp) {
+			return new Date();
+		}
+
+		const normalized = timestamp.replace(/\.(\d{3})\d+/, '.$1');
+		const parsed = new Date(normalized);
+		if (Number.isNaN(parsed.getTime())) {
+			return new Date();
+		}
+
+		return parsed;
+	}
+
 	private convertToRFIDData(tags: InventoryTag[]): RFIDData[] {
 		return tags.map((tag) => ({
 			id: tag.epc,
@@ -625,7 +846,10 @@ export class FeigRFIDReader implements RFIDReader {
 		);
 	}
 
-	private notifyCallbacks(event: { type: 'added' | 'removed' | 'updated'; item: RFIDData }): void {
+	private notifyCallbacks(event: {
+		type: 'added' | 'removed' | 'updated' | 'stable' | 'unstable';
+		item: RFIDData;
+	}): void {
 		this.callbacks.forEach((callback) => callback(event));
 	}
 }

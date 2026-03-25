@@ -17,6 +17,14 @@ export interface RFIDData {
 	pc?: string;
 	/** Antenna RSSI values */
 	antennaRssi?: Array<{ antennaNumber: number; rssi: number }>;
+	/** Whether backend currently marks presence as stable */
+	stable?: boolean;
+	/** Number of consecutive sightings in the current presence window */
+	seenCount?: number;
+	/** Presence duration in milliseconds */
+	presenceDurationMs?: number;
+	/** Best RSSI reported by backend for this presence window */
+	bestRssi?: number;
 }
 
 export interface EPCBankAnalysis {
@@ -81,7 +89,7 @@ export interface AnalyzeResult {
 	error?: string;
 }
 
-export type RFIDEventType = 'added' | 'removed' | 'updated';
+export type RFIDEventType = 'added' | 'removed' | 'updated' | 'stable' | 'unstable';
 
 export interface RFIDEvent {
 	type: RFIDEventType;

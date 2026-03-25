@@ -75,8 +75,8 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 
 ### Reader Selection while using
 
-- **Persistent selection**: Choosing a reader in the Admin/Reader/Tagging pages stores `selectedMiddleware`/`selectedReader` in `localStorage`.
-- **URL selection**: Gate and Checkout use `?middleware_id=ID&reader_id=NAME` query params (useful to fix a certain reader in a kiosk environment). Checkout also requires `checkout_profile_id=ID` to select the LMS checkout profile (aka the library/circ desk combo for Alma).
+- **Persistent selection**: Choosing a reader in the Admin/Reader/Tagging pages stores `selectedMiddleware`/`selectedReader` in `localStorage`. IMPORTANT: These must be Feig "host" mode readers.
+- **URL selection**: Gate and Checkout use `?middleware_id=ID&reader_id=NAME` query params (useful to fix a certain reader in a kiosk environment). Checkout also requires `checkout_profile_id=ID` to select the LMS checkout profile (aka the library/circ desk combo for Alma). IMPORTANT: These must be Feig "notification" mode readers.
 - **Mock helpers**: Quick links set `middleware_id=mock1&reader_id=MockReader1`.
 
 ## LMS Integrations
@@ -101,7 +101,7 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 ##### Prerequisite:
 
 - You have BookWaves running and accessible from your local Browser
-- BooWaves uses an **HTTPs** URL (self-signed certificates are supported)
+- BookWaves uses an **HTTPs** URL (self-signed certificates are supported)
 
 ##### Integration Profile Setup:
 
@@ -177,7 +177,7 @@ docker buildx build --tag ghcr.io/lukaslerche/bookwaves:latest --load .
    ```bash
    docker buildx build --platform linux/amd64,linux/arm64 \
      --tag ghcr.io/lukaslerche/bookwaves:latest \
-     --tag ghcr.io/lukaslerche/bookwaves:1.4.0 \
+     --tag ghcr.io/lukaslerche/bookwaves:1.5.0 \
      --push .
    ```
 
