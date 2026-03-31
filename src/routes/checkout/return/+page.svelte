@@ -2,7 +2,7 @@
 	import RFIDItem from '$lib/components/RFIDItem.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import CheckoutSummaryModal from '$lib/components/CheckoutSummaryModal.svelte';
-	import { Check, RotateCcw, Undo2, X } from '@lucide/svelte';
+	import { Check, RotateCcw, HandHelping, X } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 	import { onDestroy, onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
@@ -368,7 +368,7 @@
 		>
 			<div class="flex items-center gap-4">
 				<div class="rounded-2xl bg-base-100/20 p-3 text-white shadow-lg">
-					<Undo2 class="h-8 w-8" />
+					<HandHelping class="h-8 w-8" />
 				</div>
 				<div class="text-white">
 					<h1 class="text-4xl font-bold drop-shadow-lg">{m.return_books()}</h1>

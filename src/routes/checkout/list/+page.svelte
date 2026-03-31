@@ -1,6 +1,6 @@
 <script lang="ts">
 	import RFIDItem from '$lib/components/RFIDItem.svelte';
-	import { BookOpen, List as ListIcon } from '@lucide/svelte';
+	import { BookOpen, Library } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 	import { onDestroy, onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
@@ -107,7 +107,7 @@
 		>
 			<div class="flex items-center gap-4">
 				<div class="rounded-2xl bg-base-100/20 p-3 text-white shadow-lg">
-					<ListIcon class="h-8 w-8" />
+					<Library class="h-8 w-8" />
 				</div>
 				<div class="text-white">
 					<h1 class="text-4xl font-bold drop-shadow-lg">{m.view_items()}</h1>

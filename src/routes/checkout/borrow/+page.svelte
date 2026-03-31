@@ -13,7 +13,6 @@
 	import type { RFIDData, RFIDReader } from '$lib/reader/interface';
 	import { borrowItem, loginUser, logoutUser } from '$lib/lms/lms.remote';
 	import type { LmsActionResult, MediaItem } from '$lib/lms/lms';
-	import Account from '$lib/components/Account.svelte';
 	import { getAuthUser, clearAuthUser, setAuthUser } from '$lib/stores/auth';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
@@ -419,22 +418,16 @@
 					<div class="text-white">
 						<h1 class="text-4xl font-bold drop-shadow-lg">{m.borrow_books()}</h1>
 
-						<p class="mt-3 text-base opacity-90">{m.place_your_items_on_the_reader()}</p>
-						<button class="btn mt-3 shadow-xl btn-lg btn-accent" onclick={handleDoneClick}>
-							<Check />{m.done()} & {m.logout()}
-						</button>
+						<p class="mt-3 text-base opacity-90">
+							{m.place_your_items_on_the_reader()}{#if data.account}: {data.account.name}{/if}
+						</p>
 					</div>
 				</div>
-
-				{#if data.account}
-					<div class="rounded-xl bg-base-100 p-4 shadow-lg">
-						<Account
-							name={data.account.name}
-							fees={data.account.fees}
-							borrowedCount={data.account.loans}
-						/>
-					</div>
-				{/if}
+				<div class="md:ml-auto">
+					<button class="btn shadow-xl btn-lg btn-accent" onclick={handleDoneClick}>
+						<Check />{m.done()} & {m.logout()}
+					</button>
+				</div>
 			</header>
 
 			<div class="mb-8">
