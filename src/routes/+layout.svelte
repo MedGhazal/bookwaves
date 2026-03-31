@@ -22,9 +22,17 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
 <div class="h-screen overflow-y-auto" style={themeVarsStyle}>
-	<div class="fixed top-4 right-4 z-50 flex gap-2">
-		<button class="btn" onclick={() => setLocale('en')} aria-label="Switch language to English">🇬🇧 EN</button>
-		<button class="btn" onclick={() => setLocale('de')} aria-label="Sprache auf Deutsch wechseln">🇩🇪 DE</button>
+	<div class="fixed bottom-4 left-4 z-50 flex gap-2">
+		<button
+			class="btn btn-outline"
+			onclick={() => setLocale('de')}
+			aria-label="Sprache auf Deutsch wechseln">🇩🇪 DE</button
+		>
+		<button
+			class="btn btn-outline"
+			onclick={() => setLocale('en')}
+			aria-label="Switch language to English">🇬🇧 EN</button
+		>
 	</div>
 	{@render children?.()}
 </div>
