@@ -210,7 +210,7 @@
 						{scannerOpen ? m.stop_camera() : m.start_with_camera()}
 					</button>
 					{#if scannerStatus === 'scanning'}
-						<span class="text-xs text-base-content/60"> m.point_the_camera() </span>
+						<span class="text-xs text-base-content/60"> {m.point_the_camera()} </span>
 					{/if}
 				</div>
 				{#if scannerOpen}
