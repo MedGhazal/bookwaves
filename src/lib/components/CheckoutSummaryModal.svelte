@@ -49,9 +49,15 @@
 <dialog class="modal-open modal">
 	<div class="modal-box max-w-3xl">
 		<h3 class="mb-6 text-2xl font-bold">
-			{session.type === 'borrow' ? 'Checkout' : 'Return'}
+			{session.type === 'borrow' ? m.borrow_label() : m.return_label()}
 			{m.summary()}
 		</h3>
+
+		<div class="modal-action mt-0 mb-6">
+			<button class="btn btn-block btn-primary" onclick={onConfirm}>
+				{successfulItems.length > 0 ? 'Finish & Logout' : 'Close'}
+			</button>
+		</div>
 
 		{#if successfulItems.length > 0}
 			<div class="mb-6">
@@ -154,11 +160,5 @@
 				<p class="text-lg opacity-70">{m.no_items_processed()}.</p>
 			</div>
 		{/if}
-
-		<div class="modal-action">
-			<button class="btn btn-block btn-primary" onclick={onConfirm}>
-				{successfulItems.length > 0 ? 'Finish & Logout' : 'Close'}
-			</button>
-		</div>
 	</div>
 </dialog>
