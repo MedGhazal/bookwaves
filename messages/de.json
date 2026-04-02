@@ -164,5 +164,6 @@
 	"media_information_unavailable": "Medieninformationen nicht verfügbar",
 	"reload": "Neu laden",
 	"borrowed": "ausgeliehen",
-	"returned": "zurückgegeben"
+	"returned": "zurückgegeben",
+	"tagging_crew_message": "Scannen Sie das nächste Buch mit dem Barcode-Scanner"
 }

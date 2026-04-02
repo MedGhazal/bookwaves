@@ -53,7 +53,10 @@ Copy `config.example.yaml` to `config.yaml` and edit:
 - Keep `config.yaml` out of git. Set `CONFIG_FILE_PATH` if you store it elsewhere.
 - `middleware_instances` drives all reader pickers; at least one entry is required. The mock entry works without hardware.
 - Alma requires a valid API key; mock LMS needs no credentials. Login mode controls the checkout dialogs.
-- Tagging whitelist blocks writes unless the EPC starts with an allowed prefix (override toggle available in UI).
+- Tagging:
+  - `whitelist` blocks writes unless the EPC starts with an allowed prefix (override toggle available in UI).
+  - `formats` lets you select which tag format you want to write (must match the tag types your middleware supports).
+  - `focus` mode hides the reader selector and back button to streamline tagging for crew members using a fixed reader.
 - `theme.page_backgrounds` lets you override route background gradients (`home`, `checkout`, `gate`, `reader`, `tagging`, `admin`).
 - `theme.logo` lets you override the header logo (use an absolute path like `/branding/logo.png` or an `https://` URL).
 

@@ -164,5 +164,6 @@
 	"media_information_unavailable": "Media information unavailable",
 	"reload": "Reload",
 	"borrowed": "borrowed",
-	"returned": "returned"
+	"returned": "returned",
+	"tagging_crew_message": "Scan the next book using the barcode scanner"
 }
