@@ -61,6 +61,7 @@ export interface ThemePageBackgroundsConfig {
 
 export interface ThemeConfig {
 	page_backgrounds?: ThemePageBackgroundsConfig;
+	font?: string;
 	logo?: string;
 }
 
@@ -111,7 +112,7 @@ function normalizeCssColor(value: unknown): string | undefined {
 	return trimmed;
 }
 
-function normalizeThemeLogo(value: unknown): string | undefined {
+function validateSource(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
 	const trimmed = value.trim();
 	if (!trimmed || trimmed.length > 2048) return undefined;
@@ -189,7 +190,8 @@ function parseThemeConfig(theme: ThemeConfig | undefined): ThemeConfig {
 					'var(--color-base-300)'
 			}
 		},
-		logo: normalizeThemeLogo(theme?.logo) ?? DEFAULT_THEME_CONFIG.logo
+		logo: validateSource(theme?.logo) ?? DEFAULT_THEME_CONFIG.logo,
+		font: validateSource(theme?.font) ?? DEFAULT_THEME_CONFIG.font
 	};
 }
 
@@ -235,6 +237,7 @@ tagging:
 
 theme:
     #logo: "/branding/logo.png" # optional; supports /absolute/path or https:// URL
+    #font: "/branding/font.ttf" # optional; supports /absolute/path or https:// URL
   page_backgrounds:
     home:
       from: "#2563eb"
