@@ -18,6 +18,7 @@ const DEFAULT_API_URL = 'https://api-eu.hosted.exlibrisgroup.com/almaws/v1/';
 type ReturnRule = {
 	field: string;
 	in?: string[];
+	not_in?: string[];
 	equals?: string | boolean | number;
 	exists?: boolean;
 };
@@ -272,7 +273,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			return value !== undefined && rule.in.includes(String(value));
 		}
 		if (rule.not_in !== undefined) {
-			return value === undefined || !rule.in.includes(String(value));
+			return value === undefined || !rule.not_in.includes(String(value));
 		}
 		if (rule.equals !== undefined) {
 			return value === rule.equals;
@@ -308,7 +309,6 @@ export class AlmaLMS implements LibraryManagementSystem {
 				sortOrder: 1
 			};
 		}
-		const location = item.location_code?.toLowerCase() ?? '';
 		// const circulation_desk = "DEFAULT_CIRC_DESK".toLowerCase();
 		// const circulation_desk = item.location?.toLowerCase() ?? '';
 		const circulation_desk =
@@ -1009,25 +1009,6 @@ export class AlmaLMS implements LibraryManagementSystem {
 		if (!parsedItemData.success) {
 			throw new Error('Invalid item data format');
 		}
-		const result: MediaItem = {
-			barcode: barcode,
-			title: parsedItemData.output.bib_data.title,
-			author: parsedItemData.output.bib_data.author,
-			edition: parsedItemData.output.bib_data.complete_edition,
-			place: parsedItemData.output.bib_data.place_of_publication,
-			date: parsedItemData.output.bib_data.date_of_publication,
-			publisher: parsedItemData.output.bib_data.publisher_const,
-			library: parsedItemData.output.item_data.library.desc,
-			library_code: parsedItemData.output.item_data.library.value,
-			location: parsedItemData.output.item_data.location.desc,
-			shelfmark: parsedItemData.output.item_data.alternative_call_number,
-			status:
-				parsedItemData.output.item_data.base_status.desc +
-				': ' +
-				(parsedItemData.output.item_data.process_type?.desc ?? '-'),
-			cover: 'https://picsum.dev/120/180?seed=' + parsedItemData.output.bib_data.isbn
-		};
-		result.returnDirective = this.buildReturnDirective(result);
 		const result = this.mapItemToMediaItem(parsedItemData.output, barcode);
 		this.setCachedItem(barcode, {
 			mmsId: parsedItemData.output.bib_data.mms_id,

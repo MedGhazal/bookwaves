@@ -332,7 +332,7 @@ function parseGlobalReturnDirectiveConfig(data: LMSConfig): ReturnDirective[] {
 
 function parseSpecialReturnDirectiveConfig(
 	global: ReturnDirective[],
-	override: Record<string, any>
+	override: Partial<ReturnDirective> & { binId: string }
 ): ReturnDirective {
 	const globalReturnDirectiveOfBin = global.find(
 		(returnDirective) => returnDirective.binId === override.binId
@@ -380,7 +380,7 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 		const circulationDesk =
 			typeof profile.circulation_desk === 'string' ? profile.circulation_desk.trim() : '';
 		const type = typeof profile.type === 'string' ? profile.type.trim() : lmsType;
-		var returnDirectives;
+		let returnDirectives: ReturnDirective[];
 		if (profile.return_directives === undefined) {
 			returnDirectives = globalReturnDirectives;
 		} else {
