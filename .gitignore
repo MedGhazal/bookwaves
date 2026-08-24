@@ -27,3 +27,4 @@ project.inlang/cache/
 
 config.yaml
 .scratch/
+.claude
