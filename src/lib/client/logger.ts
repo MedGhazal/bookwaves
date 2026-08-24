@@ -11,8 +11,7 @@ function resolveLevel(): LogLevel {
 			? localStorage.getItem('LOG_LEVEL') || undefined
 			: undefined;
 	const fromEnv = (import.meta.env.PUBLIC_LOG_LEVEL || import.meta.env.VITE_LOG_LEVEL || '') as
-		| string
-		| undefined;
+		string | undefined;
 	return parseLogLevel(fromStorage || fromEnv, defaultLevel);
 }
 

@@ -2,7 +2,7 @@
 	import RFIDItem from '$lib/components/RFIDItem.svelte';
 	import LoginModal from '$lib/components/LoginModal.svelte';
 	import CheckoutSummaryModal from '$lib/components/CheckoutSummaryModal.svelte';
-	import { BookDown, Check, X } from '@lucide/svelte';
+	import { BookDown, Check, RefreshCw, X } from '@lucide/svelte';
 	import type { PageProps } from './$types';
 	import { onDestroy, onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
@@ -10,12 +10,14 @@
 	import type { SvelteComponent } from 'svelte';
 	import { createReaderFromParams } from '$lib/stores/reader-selection';
 	import type { RFIDData, RFIDReader } from '$lib/reader/interface';
-	import { borrowItem, loginUser, logoutUser } from '$lib/lms/lms.remote';
+	import { borrowItem, logoutUser, resumeCurrentUserSession } from '$lib/lms/lms.remote';
 	import type { LmsActionResult, MediaItem } from '$lib/lms/lms';
 	import { getAuthUser, clearAuthUser, setAuthUser } from '$lib/stores/auth';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { clientLogger } from '$lib/client/logger';
+	import { classifyReaderOperationError } from '$lib/reader/operation-errors';
+	import { formatReaderOperationError } from '$lib/reader/operation-error-messages';
 	import {
 		getCheckoutSession,
 		startCheckoutSession,
@@ -88,6 +90,8 @@
 		actionReady: boolean;
 		status: 'checking' | 'lending' | 'success' | 'failed';
 		message?: string;
+		rfidWarning?: string;
+		rfidRetrying?: boolean;
 		component?: RFIDItemInstance | null; // Reference to RFIDItem component
 	};
 
@@ -187,19 +191,29 @@
 
 		if (result?.ok) {
 			processed.status = 'success';
-			processed.message = result.message ?? m.successfully_borrowed_message();
+			const msgFn = result.messageKey
+				? (m as unknown as Record<string, () => string>)[result.messageKey]
+				: undefined;
+			processed.message = msgFn?.() ?? result.message ?? m.successfully_borrowed_message();
 			// Refresh the RFIDItem to show updated status
 			if (processed.component?.refresh) {
 				await processed.component.refresh();
 			}
 			const itemForSession = result.item ?? mediaItem;
 			processed.mediaItem = itemForSession ?? processed.mediaItem;
+			processed.rfidWarning = undefined;
 
 			if (readerInstance?.unsecure) {
 				try {
-					await readerInstance.unsecure(processed.rfidData.id);
+					const unsecureResult = await readerInstance.unsecure(processed.rfidData.id);
+					if (!unsecureResult.success) {
+						processed.rfidWarning = formatRfidSecurityWarning(
+							new Error(unsecureResult.message ?? m.unknown_error())
+						);
+					}
 				} catch (err) {
-					clientLogger.error({ err }, m.secure_failure_message());
+					clientLogger.error({ err }, 'Failed to unsecure item after borrow');
+					processed.rfidWarning = formatRfidSecurityWarning(err);
 				}
 			}
 
@@ -209,11 +223,15 @@
 				mediaItem: itemForSession,
 				timestamp: Date.now(),
 				status: 'success',
-				message: processed.message
+				message: processed.message,
+				rfidWarning: processed.rfidWarning
 			});
 		} else {
 			processed.status = 'failed';
-			const reason = result?.reason ?? m.lending_failure_message();
+			const reasonFn = result?.reasonKey
+				? (m as unknown as Record<string, () => string>)[result.reasonKey]
+				: undefined;
+			const reason = reasonFn?.() ?? result?.reason ?? m.lending_failure_message();
 			//const details = result?.errors?.length ? `: ${result.errors.join('; ')}` : '';
 			processed.message = reason; // + details;
 
@@ -229,6 +247,44 @@
 
 		processedItems = [...processedItems];
 		currentSession = getCheckoutSession();
+	}
+
+	function formatRfidSecurityWarning(error: unknown): string {
+		return m.rfid_security_update_warning({
+			error: formatReaderOperationError(classifyReaderOperationError('unsecure', error))
+		});
+	}
+
+	async function retryRfidUnsecure(processed: ProcessedItem) {
+		if (!readerInstance || processed.status !== 'success' || processed.rfidRetrying) return;
+
+		processed.rfidWarning = undefined;
+		processed.rfidRetrying = true;
+		processedItems = [...processedItems];
+
+		try {
+			const result = await readerInstance.unsecure(processed.rfidData.id);
+			if (!result.success) {
+				processed.rfidWarning = formatRfidSecurityWarning(
+					new Error(result.message ?? m.unknown_error())
+				);
+			}
+		} catch (error) {
+			clientLogger.error({ err: error }, 'RFID unsecure retry failed');
+			processed.rfidWarning = formatRfidSecurityWarning(error);
+		} finally {
+			processed.rfidRetrying = false;
+			addSessionItem({
+				rfidData: processed.rfidData,
+				mediaItem: processed.mediaItem,
+				timestamp: Date.now(),
+				status: 'success',
+				message: processed.message ?? m.successfully_borrowed_message(),
+				rfidWarning: processed.rfidWarning
+			});
+			processedItems = [...processedItems];
+			currentSession = getCheckoutSession();
+		}
 	}
 
 	function processItem(rfidData: RFIDData, actionReady: boolean) {
@@ -259,7 +315,7 @@
 		processedItems = [processed, ...processedItems];
 	}
 
-	async function initSessionAndReader(activeUser: string) {
+	async function initSessionAndReader(activeUser: string): Promise<boolean> {
 		// Initialize or restore session once
 		if (!sessionInitialized) {
 			let session = getCheckoutSession();
@@ -278,14 +334,19 @@
 					actionReady: true,
 					status: item.status === 'success' ? 'success' : 'failed',
 					message: item.message,
+					rfidWarning: item.rfidWarning,
 					component: null
 				}));
 			}
 		}
 
-		if (!activeUser) return;
+		if (!activeUser) return false;
 
-		await loginUser({ user: activeUser });
+		if (!(await resumeCurrentUserSession())) {
+			clearAuthUser();
+			showLoginModal = true;
+			return false;
+		}
 
 		// Tear down any previous subscription before starting a new one
 		if (readerUnsubscribe) {
@@ -307,7 +368,7 @@
 				'No reader configured. Please configure a reader via URL params or admin page.'
 			);
 			readerError = m.no_reader_found_while_borrowing_message();
-			return;
+			return false;
 		}
 
 		readerError = null;
@@ -328,15 +389,18 @@
 				processItem(event.item, true);
 			}
 		});
+
+		return true;
 	}
 
 	onMount(async () => {
 		clientLogger.debug('Page data:', data);
 
 		const storedUser = getAuthUser();
-		const activeUser = data.authUser || storedUser;
+		const activeUser = data.authUser;
 
 		if (!activeUser) {
+			clearAuthUser();
 			showLoginModal = true;
 			return;
 		}
@@ -345,8 +409,9 @@
 			setAuthUser(data.authUser);
 		}
 
-		await initSessionAndReader(activeUser);
-		startIdleCountdown();
+		if (await initSessionAndReader(activeUser)) {
+			startIdleCountdown();
+		}
 	});
 
 	onDestroy(() => {
@@ -364,7 +429,9 @@
 		// Log in to LMS with stored user
 		const authUser = getAuthUser();
 		if (authUser) {
-			await initSessionAndReader(authUser);
+			if (!(await initSessionAndReader(authUser))) {
+				return;
+			}
 		}
 
 		startIdleCountdown();
@@ -438,6 +505,8 @@
 		onCancel={handleLogoutAndBack}
 		{loginMode}
 		loginHelpImage={data.loginHelpImage}
+		scannerFocusAssist={data.scannerFocusAssist}
+		topAlignedModal={data.topAlignedModal}
 	/>
 {:else}
 	<div class="app-page-bg-checkout min-h-screen p-8">
@@ -494,7 +563,7 @@
 						<span>Timeout</span>
 						<span>{countdownSeconds}s</span>
 					</div>
-					<button class="btn shadow-xl btn-lg btn-accent" onclick={handleDoneClick}>
+					<button class="btn shadow-xl btn-accent btn-lg" onclick={handleDoneClick}>
 						<Check />{m.i_am_done()}
 					</button>
 				</div>
@@ -544,9 +613,31 @@
 												<div
 													class="card w-full border border-success/40 bg-success/10 px-4 py-4 text-base text-success shadow-sm"
 												>
-													<div class="flex items-center gap-3">
-														<Check />
-														<span class="text-left">{item.message}</span>
+													<div class="flex flex-col gap-3">
+														<div class="flex items-center gap-3">
+															<Check />
+															<span class="text-left">{item.message}</span>
+														</div>
+														{#if item.rfidWarning || item.rfidRetrying}
+															<div class="rounded-md bg-warning/20 p-3 text-warning">
+																{#if item.rfidWarning}
+																	<p class="text-left text-sm">{item.rfidWarning}</p>
+																{/if}
+																<button
+																	class="btn mt-2 btn-sm btn-warning"
+																	onclick={() => retryRfidUnsecure(item)}
+																	disabled={item.rfidRetrying}
+																>
+																	{#if item.rfidRetrying}
+																		<span class="loading loading-xs loading-spinner"></span>
+																		{m.retrying_rfid_security_update()}...
+																	{:else}
+																		<RefreshCw class="h-4 w-4" />
+																		{m.retry_rfid_security_update()}
+																	{/if}
+																</button>
+															</div>
+														{/if}
 													</div>
 												</div>
 											{:else if item.status === 'failed'}

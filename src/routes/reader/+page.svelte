@@ -14,8 +14,10 @@
 		Skull
 	} from '@lucide/svelte';
 	import type { PageData } from './$types';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import type { RFIDData, RFIDReader } from '$lib/reader/interface';
+	import { classifyReaderOperationError, type ReaderOperation } from '$lib/reader/operation-errors';
+	import { formatReaderOperationError } from '$lib/reader/operation-error-messages';
 	import { getSelectedReaderConfig, createReaderFromSelection } from '$lib/stores/reader-selection';
 	import { clientLogger } from '$lib/client/logger';
 	import { m } from '$lib/paraglide/messages';
@@ -28,9 +30,14 @@
 	let editingItem = $state<string | null>(null);
 	let editData = $state('');
 	let readerError = $state<string | null>(null);
+	let errorMessages = $state<Record<string, string>>({});
 
 	onMount(async () => {
 		initializeReader();
+	});
+
+	onDestroy(() => {
+		clearAllItemErrorTimers();
 	});
 
 	function initializeReader() {
@@ -87,16 +94,52 @@
 		}
 	}
 
+	const ERROR_AUTO_CLEAR_MS = 5000;
+	const errorTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
+
+	function reportReaderError(itemId: string, operation: ReaderOperation, err: unknown) {
+		const readerOperationError = classifyReaderOperationError(operation, err);
+		errorMessages[itemId] = formatReaderOperationError(readerOperationError);
+
+		// Cancel any pending auto-clear for this item, then schedule a new one
+		if (errorTimeouts[itemId]) {
+			clearTimeout(errorTimeouts[itemId]);
+		}
+		errorTimeouts[itemId] = setTimeout(() => {
+			clearItemError(itemId);
+		}, ERROR_AUTO_CLEAR_MS);
+	}
+
+	function clearItemError(itemId: string) {
+		delete errorMessages[itemId];
+		if (errorTimeouts[itemId]) {
+			clearTimeout(errorTimeouts[itemId]);
+			delete errorTimeouts[itemId];
+		}
+	}
+
+	function clearAllItemErrorTimers() {
+		for (const timeout of Object.values(errorTimeouts)) {
+			clearTimeout(timeout);
+		}
+	}
+
 	async function handleSecure(itemId: string) {
 		if (!reader || operationInProgress) return;
 		operationInProgress = itemId;
+		clearItemError(itemId);
 		try {
-			await reader.secure(itemId);
+			const result = await reader.secure(itemId);
+			if (!result.success) {
+				reportReaderError(itemId, 'secure', new Error(result.message ?? 'Unknown error'));
+				return;
+			}
 			// sleep 100 ms
 			await new Promise((resolve) => setTimeout(resolve, 200));
 			await loadItems();
 		} catch (error) {
 			clientLogger.error('Failed to secure item:', error);
+			reportReaderError(itemId, 'secure', error);
 		} finally {
 			operationInProgress = null;
 		}
@@ -105,13 +148,19 @@
 	async function handleUnsecure(itemId: string) {
 		if (!reader || operationInProgress) return;
 		operationInProgress = itemId;
+		clearItemError(itemId);
 		try {
-			await reader.unsecure(itemId);
+			const result = await reader.unsecure(itemId);
+			if (!result.success) {
+				reportReaderError(itemId, 'unsecure', new Error(result.message ?? 'Unknown error'));
+				return;
+			}
 			// sleep 100 ms
 			await new Promise((resolve) => setTimeout(resolve, 200));
 			await loadItems();
 		} catch (error) {
 			clientLogger.error('Failed to unsecure item:', error);
+			reportReaderError(itemId, 'unsecure', error);
 		} finally {
 			operationInProgress = null;
 		}
@@ -130,13 +179,19 @@
 	async function saveEdit(itemId: string) {
 		if (!reader || operationInProgress) return;
 		operationInProgress = itemId;
+		clearItemError(itemId);
 		try {
-			await reader.edit(itemId, editData);
+			const result = await reader.edit(itemId, editData);
+			if (!result.success) {
+				reportReaderError(itemId, 'edit', new Error(result.message ?? 'Unknown error'));
+				return;
+			}
 			await loadItems();
 			editingItem = null;
 			editData = '';
 		} catch (error) {
 			clientLogger.error('Failed to write item:', error);
+			reportReaderError(itemId, 'edit', error);
 		} finally {
 			operationInProgress = null;
 		}
@@ -146,12 +201,18 @@
 		if (!reader || operationInProgress) return;
 		if (!confirm(m.confirm_clear())) return;
 		operationInProgress = itemId;
+		clearItemError(itemId);
 		try {
-			await reader.clear(itemId);
+			const result = await reader.clear(itemId);
+			if (!result.success) {
+				reportReaderError(itemId, 'clear', new Error(result.message ?? 'Unknown error'));
+				return;
+			}
 			await new Promise((resolve) => setTimeout(resolve, 200));
 			await loadItems();
 		} catch (error) {
 			clientLogger.error('Failed to clear item:', error);
+			reportReaderError(itemId, 'clear', error);
 		} finally {
 			operationInProgress = null;
 		}
@@ -197,7 +258,7 @@
 					<span class="text-2xl font-bold">{detectedItems.length}</span>
 					<span class="ml-2 text-lg opacity-90">{m.items_detected()}</span>
 				</div>
-				<button class="btn shadow-xl btn-lg btn-accent" onclick={loadItems} disabled={loading}>
+				<button class="btn shadow-xl btn-accent btn-lg" onclick={loadItems} disabled={loading}>
 					{#if loading}
 						<span class="loading loading-spinner"></span>
 						{m.loading()}...
@@ -234,7 +295,7 @@
 												placeholder="{m.enter_tag_data()}..."></textarea>
 											<div class="flex gap-2">
 												<button
-													class="btn flex-1 btn-sm btn-primary"
+													class="btn flex-1 btn-primary btn-sm"
 													onclick={() => saveEdit(item.id)}
 													disabled={operationInProgress === item.id}
 												>
@@ -269,7 +330,7 @@
 												</button>
 											{:else}
 												<button
-													class="btn btn-sm btn-error"
+													class="btn btn-error btn-sm"
 													onclick={() => handleSecure(item.id)}
 													disabled={operationInProgress === item.id}
 												>
@@ -283,7 +344,7 @@
 											{/if}
 
 											<button
-												class="btn btn-sm btn-info"
+												class="btn btn-info btn-sm"
 												onclick={() => startEdit(item)}
 												disabled={operationInProgress === item.id}
 											>
@@ -305,7 +366,7 @@
 											</button>
 
 											<button
-												class="btn btn-outline btn-sm btn-error"
+												class="btn btn-outline btn-error btn-sm"
 												onclick={() => handleKill(item.id)}
 												disabled={operationInProgress === item.id}
 											>
@@ -320,6 +381,13 @@
 									{/if}
 								</div>
 							</div>
+
+							{#if errorMessages[item.id]}
+								<div class="mt-4 alert alert-error">
+									<CircleX />
+									<span>{errorMessages[item.id]}</span>
+								</div>
+							{/if}
 						</div>
 					</div>
 				{:else}
@@ -337,7 +405,7 @@
 		{/if}
 
 		<div class="mt-8 flex justify-center">
-			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← {m.back()} </a>
+			<a href="/" class="btn btn-ghost text-white shadow-xl btn-lg"> ← {m.back()} </a>
 		</div>
 	</div>
 

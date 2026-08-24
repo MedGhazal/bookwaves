@@ -2,12 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import YAML from 'yaml';
 import { type LogLevel, parseLogLevel } from '$lib/logger/levels';
+import { locales, type Locale } from '$lib/paraglide/runtime';
+import type { LoginHelpImageConfig } from '$lib/types/login';
+import type { CoverImageProvider } from './lms/cover-image-provider';
 
 export type LoginMode =
 	| 'username_password'
 	| 'username_only'
 	| 'scanner_only'
-	| 'username_or_scanner';
+	| 'username_or_scanner'
+	| 'username_password_or_pin';
 
 export type LoginValidationImplementation = 'campus_id';
 
@@ -38,7 +42,9 @@ export interface MiddlewareInstanceConfig {
 
 export interface LoginConfig {
 	mode?: LoginMode;
-	login_help_image?: string;
+	login_help_image?: LoginHelpImageConfig;
+	scanner_focus_assist?: boolean;
+	top_aligned_modal?: boolean;
 	validation?: LoginValidationConfig;
 }
 
@@ -119,6 +125,7 @@ export interface LMSConfig {
 	lms: {
 		type: string;
 		api_key: string;
+		cover_image_provider?: CoverImageProvider;
 	};
 	login?: LoginConfig;
 	gate?: GateConfig;
@@ -130,11 +137,14 @@ export interface LMSConfig {
 }
 
 const DEFAULT_LOGIN_MODE: LoginMode = 'username_password';
+const DEFAULT_SCANNER_FOCUS_ASSIST = false;
+const DEFAULT_TOP_ALIGNED_MODAL = false;
 const VALID_LOGIN_MODES: LoginMode[] = [
 	'username_password',
 	'username_only',
 	'scanner_only',
-	'username_or_scanner'
+	'username_or_scanner',
+	'username_password_or_pin'
 ];
 const DEFAULT_GATE_CONFIG: Required<GateConfig> = {
 	show_all_detected_items: true
@@ -210,6 +220,25 @@ function validateHttpUrl(value: unknown): string | undefined {
 	return undefined;
 }
 
+function parseLoginHelpImageConfig(value: unknown): LoginHelpImageConfig | undefined {
+	const source = validateSource(value);
+	if (source) return source;
+
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+	const localizedSources: Partial<Record<Locale, string>> = {};
+	const values = value as Partial<Record<Locale, unknown>>;
+
+	for (const locale of locales) {
+		const localizedSource = validateSource(values[locale]);
+		if (localizedSource) {
+			localizedSources[locale] = localizedSource;
+		}
+	}
+
+	return Object.keys(localizedSources).length > 0 ? localizedSources : undefined;
+}
+
 function sanitizeNonEmptyString(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
 	const trimmed = value.trim();
@@ -234,6 +263,20 @@ function parseLoginValidationConfig(
 			url: validateHttpUrl(login?.validation?.campus_id?.url),
 			api_key: sanitizeNonEmptyString(login?.validation?.campus_id?.api_key)
 		}
+	};
+}
+
+function parseCoverImageProviderConfig(value: unknown): CoverImageProvider | undefined {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+	const url = validateHttpUrl((value as { url?: unknown }).url);
+	return url ? { url } : undefined;
+}
+
+function parseLmsConfig(data: LMSConfig): LMSConfig['lms'] {
+	return {
+		...data.lms,
+		cover_image_provider: parseCoverImageProviderConfig(data.lms.cover_image_provider)
 	};
 }
 
@@ -393,9 +436,18 @@ function normalizeConfigData(data: LMSConfig, requireTaggingFormats: boolean): L
 	const parsedLoginMode = data.login?.mode ?? DEFAULT_LOGIN_MODE;
 
 	data.log_level = parseLogLevel(data.log_level, 'info');
+	data.lms = parseLmsConfig(data);
 	data.login = {
 		mode: parsedLoginMode,
-		login_help_image: validateSource(data.login?.login_help_image),
+		login_help_image: parseLoginHelpImageConfig(data.login?.login_help_image),
+		scanner_focus_assist:
+			typeof data.login?.scanner_focus_assist === 'boolean'
+				? data.login.scanner_focus_assist
+				: DEFAULT_SCANNER_FOCUS_ASSIST,
+		top_aligned_modal:
+			typeof data.login?.top_aligned_modal === 'boolean'
+				? data.login.top_aligned_modal
+				: DEFAULT_TOP_ALIGNED_MODAL,
 		validation: parseLoginValidationConfig(data.login)
 	};
 	data.gate = parseGateConfig(data);
@@ -482,18 +534,27 @@ const EMBEDDED_CONFIG_YAML = `# Copy this file to config.yaml and update with yo
 lms:
   type: mock # LMS type: alma, koha, etc.
   api_key: your_api_key # API key for authentication
+  # cover_image_provider:
+  #   # Optional base endpoint. BookWaves appends ?isbn=ISBN1,ISBN2.
+  #   # When configured, items without ISBNs do not fall back to generated covers.
+  #   url: 'https://api.ub.tu-dortmund.de/ccm/cover'
 
 log_level: info # Logging level: fatal, error, warn, info, debug, trace, silent
 
 # Login flow configuration
 login:
-  mode: username_password # username_password (default) or username_only or scanner_only or username_or_scanner
-	# login_help_image: '/branding/login-help.png' # optional; supports /absolute/path or https:// URL
-	# validation:
-	#   implementation: campus_id # empty/missing means scanner values are used directly for login
-	#   campus_id:
-	#     url: 'https://katalog.ub.tu-dortmund.de/account/api/validate'
-	#     api_key: 'replace_me'
+  mode: username_password # username_password (default), username_password_or_pin, username_only, scanner_only, or username_or_scanner
+  # login_help_image: '/branding/login-help.png' # optional; supports /absolute/path or https:// URL
+  # login_help_image: # optional; supports /absolute/path or https:// URL per locale
+  #   de: '/branding/login-help-de.png'
+  #   en: '/branding/login-help-en.png'
+  # scanner_focus_assist: false # optional; for scanner-driven kiosks. Expects fast input of at least 4 characters ending with Tab or Enter.
+  # top_aligned_modal: false # optional; moves the login modal near the top with 3rem spacing for on-screen keyboards.
+  # validation:
+  #   implementation: campus_id # empty/missing means scanner values are used directly for login
+  #   campus_id:
+  #     url: 'https://katalog.ub.tu-dortmund.de/account/api/validate'
+  #     api_key: 'replace_me'
 
 checkout:
   profiles:
@@ -580,7 +641,11 @@ export function getConfig(): LMSConfig {
 		cachedConfig = {
 			log_level: 'info',
 			lms: { type: 'mock', api_key: '' },
-			login: { mode: DEFAULT_LOGIN_MODE },
+			login: {
+				mode: DEFAULT_LOGIN_MODE,
+				scanner_focus_assist: DEFAULT_SCANNER_FOCUS_ASSIST,
+				top_aligned_modal: DEFAULT_TOP_ALIGNED_MODAL
+			},
 			gate: DEFAULT_GATE_CONFIG,
 			tagging: DEFAULT_TAGGING_CONFIG,
 			checkout: DEFAULT_CHECKOUT_CONFIG,

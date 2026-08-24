@@ -240,7 +240,7 @@
 
 						{#if whitelistEnabled}
 							<div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-								<span class="badge badge-outline badge-primary">Whitelist active</span>
+								<span class="badge badge-outline badge-primary">{m.whitelist_active()}</span>
 								<span class="opacity-70">{m.allowed_prefixes()}: {whitelistValues.join(', ')}</span>
 							</div>
 						{/if}
@@ -300,7 +300,7 @@
 
 						<select
 							id="format-select"
-							class="input-bordered input input-lg w-full"
+							class="input-bordered input w-full input-lg"
 							bind:value={holder}
 							disabled={writing}
 						>
@@ -313,7 +313,7 @@
 					</div>
 					<div class="form-control mb-4">
 						<label class="label" for="barcode-input">
-							<span class="label-text text-lg">Barcode</span>
+							<span class="label-text text-lg">{m.barcode()}</span>
 						</label>
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
@@ -323,7 +323,7 @@
 							bind:this={barcodeInput}
 							onkeypress={handleKeyPress}
 							placeholder="{m.scan_barcode_or()}..."
-							class="input-bordered input input-lg w-full"
+							class="input-bordered input w-full input-lg"
 							disabled={writing}
 							autofocus
 						/>
@@ -367,7 +367,7 @@
 		{/if}
 
 		<div class="mt-8 flex justify-center {displayBackButton}">
-			<a href="/" class="btn text-white shadow-xl btn-ghost btn-lg"> ← {m.back()} </a>
+			<a href="/" class="btn btn-ghost text-white shadow-xl btn-lg"> ← {m.back()} </a>
 		</div>
 	</div>
 	<MockReaderOverlay />

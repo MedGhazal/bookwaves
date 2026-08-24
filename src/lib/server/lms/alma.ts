@@ -11,6 +11,7 @@ import type {
 import * as v from 'valibot';
 import { logger } from '$lib/server/logger';
 import { getLocale } from '$lib/paraglide/runtime';
+import { buildProviderCoverUrl, type CoverImageProvider } from './cover-image-provider';
 
 const DEFAULT_API_URL = 'https://api-eu.hosted.exlibrisgroup.com/almaws/v1/';
 
@@ -45,10 +46,19 @@ type CheckoutProfile = {
     return_directives?: ReturnDirective[];
 };
 
+type KnownItemIdentity = {
+	mmsId: string;
+	holdingId: string;
+	itemId: string;
+	isbns?: string[];
+};
+
 interface AlmaLmsOptions {
 	apiKey: string;
 	apiUrl?: string;
+	pinLogin?: boolean;
 	checkoutProfiles?: CheckoutProfile[];
+	coverImageProvider?: CoverImageProvider;
 }
 
 const ValueLinkSchema = v.object({
@@ -61,6 +71,10 @@ export const UserSchema = v.object({
 	fees: v.optional(ValueLinkSchema),
 	loans: v.optional(ValueLinkSchema)
 });
+
+type AlmaUserData = v.InferOutput<typeof UserSchema> & {
+	pin_number?: unknown;
+};
 
 export const ItemSchema = v.object({
 	bib_data: v.object({
@@ -219,13 +233,31 @@ function parseBalance(input: unknown): number {
 	return 0;
 }
 
+function extractIsbns(value: string | undefined): string[] {
+	if (!value) return [];
+
+	const seen = new Set<string>();
+	const isbns: string[] = [];
+	const matches = value.match(/[0-9Xx](?:[0-9Xx]|[\s-](?=[0-9Xx])){8,}[0-9Xx]/g) ?? [];
+
+	for (const match of matches) {
+		const normalized = match.replace(/[\s-]/g, '').toUpperCase();
+		if (!/^(?:\d{9}[\dX]|\d{13})$/.test(normalized) || seen.has(normalized)) continue;
+		seen.add(normalized);
+		isbns.push(normalized);
+	}
+
+	return isbns;
+}
+
 export class AlmaLMS implements LibraryManagementSystem {
 	private apiUrl: string;
 	private currentUserId?: string;
 	private apiKey: string;
+	private coverImageProvider?: CoverImageProvider;
 
 	private params: URLSearchParams;
-	private itemCache = new Map<string, { mmsId: string; holdingId: string; itemId: string }>();
+	private itemCache = new Map<string, KnownItemIdentity>();
 	private checkoutProfiles = new Map<string, CheckoutProfile>();
     private returnDirectives = new Map<string, Array<ReturnDirective>>();
 
@@ -257,6 +289,7 @@ export class AlmaLMS implements LibraryManagementSystem {
         if (condition.all) { return condition.all.every(child => this.matchesRule(child, item)); }
         return false;
     }
+	public pinLogin?: boolean;
 
 	private buildReturnDirective(item: MediaItem): LmsReturnDirective | undefined {
         const library = item.library_code?.toLowerCase() ?? '';
@@ -303,16 +336,18 @@ export class AlmaLMS implements LibraryManagementSystem {
 		return cached;
 	}
 
-	private setCachedItem(
-		barcode: string,
-		ids: { mmsId: string; holdingId: string; itemId: string }
-	): void {
+	private setCachedItem(barcode: string, identity: KnownItemIdentity): void {
 		if (this.itemCache.has(barcode)) this.itemCache.delete(barcode);
-		this.itemCache.set(barcode, ids);
+		this.itemCache.set(barcode, identity);
 		if (this.itemCache.size > 50) {
 			const oldestKey = this.itemCache.keys().next().value;
 			if (oldestKey !== undefined) this.itemCache.delete(oldestKey);
 		}
+	}
+
+	private buildCoverUrl(seed: string, isbns: string[] = []): string | undefined {
+		if (this.coverImageProvider) return buildProviderCoverUrl(this.coverImageProvider, isbns);
+		return `https://picsum.dev/120/180?seed=${encodeURIComponent(seed)}`;
 	}
 
 	private resolveCheckoutDetails(
@@ -342,14 +377,13 @@ export class AlmaLMS implements LibraryManagementSystem {
 		if (this.checkoutProfiles.size === 0) {
 			return {
 				ok: false,
-				reason: 'No checkout profile configured; provide library and circ_desk values'
+				reasonKey: 'error_no_checkout_profile'
 			};
 		}
 
 		return {
 			ok: false,
-			reason:
-				'Multiple checkout profiles configured; specify checkout_profile_id or provide library and circ_desk'
+			reasonKey: 'error_multiple_checkout_profiles'
 		};
 	}
 
@@ -411,6 +445,15 @@ export class AlmaLMS implements LibraryManagementSystem {
 	}
 
 	private mapLoanToMediaItem(loan: v.InferOutput<typeof ItemLoanSchema>): MediaItem {
+		const cachedIdentity = this.getCachedItem(loan.item_barcode);
+		const isbns = cachedIdentity?.isbns;
+		this.setCachedItem(loan.item_barcode, {
+			mmsId: loan.mms_id,
+			holdingId: loan.holding_id,
+			itemId: loan.item_id,
+			isbns
+		});
+
 		const mediaItem: MediaItem = {
 			barcode: loan.item_barcode,
 			title: loan.title,
@@ -427,7 +470,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			dueDate: loan.due_date,
 			returnLibrary: loan.library.desc ?? loan.library.value,
 			status: 'On loan',
-			cover: `https://picsum.dev/120/180?seed=${encodeURIComponent(loan.title)}`
+			cover: this.buildCoverUrl(loan.title, isbns)
 		};
 		mediaItem.returnDirective = this.buildReturnDirective(mediaItem);
 		return mediaItem;
@@ -454,6 +497,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 		itemData: v.InferOutput<typeof ItemSchema>,
 		barcode: string
 	): MediaItem {
+		const isbns = extractIsbns(itemData.bib_data.isbn);
 		const mediaItem: MediaItem = {
 			barcode,
 			title: itemData.bib_data.title,
@@ -469,7 +513,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			shelfmark: itemData.item_data.alternative_call_number,
 			status:
 				itemData.item_data.base_status.desc + ': ' + (itemData.item_data.process_type?.desc ?? '-'),
-			cover: 'https://picsum.dev/120/180?seed=' + itemData.bib_data.isbn
+			cover: this.buildCoverUrl(itemData.bib_data.isbn ?? itemData.bib_data.title, isbns)
 		};
 		mediaItem.returnDirective = this.buildReturnDirective(mediaItem);
 		return mediaItem;
@@ -554,7 +598,13 @@ export class AlmaLMS implements LibraryManagementSystem {
 		return parsedRequestsData.output.user_request ?? [];
 	}
 
-	constructor({ apiKey, apiUrl = DEFAULT_API_URL, checkoutProfiles = [] }: AlmaLmsOptions) {
+	constructor({
+		apiKey,
+		pinLogin,
+		apiUrl = DEFAULT_API_URL,
+		checkoutProfiles = [],
+		coverImageProvider
+	}: AlmaLmsOptions) {
 		if (!apiKey) {
 			throw new Error('Alma API key is required');
 		}
@@ -572,6 +622,8 @@ export class AlmaLMS implements LibraryManagementSystem {
             }
             this.returnDirectives.set(key, returnDirectives);
         }
+		this.pinLogin = pinLogin;
+		this.coverImageProvider = coverImageProvider;
 		this.checkoutProfiles = new Map(
 			checkoutProfiles
 				.filter((profile) => (profile.type ?? 'alma').toLowerCase() === 'alma')
@@ -596,7 +648,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 	}
 
 	// Check all critical Alma API endpoints for availability
-	public async getHealth(): Promise<{ result: boolean; reason?: string }> {
+	public async getHealth(): Promise<{ result: boolean; reason?: string; reasonKey?: string }> {
 		const endpoints = [
 			{ name: 'users', url: `${this.apiUrl}users/operation/test` },
 			{ name: 'bibs', url: `${this.apiUrl}bibs/test` }
@@ -622,7 +674,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			}
 			return { result: true };
 		} catch {
-			return { result: false, reason: 'unexpected error during health check' };
+			return { result: false, reasonKey: 'error_health_check_failed' };
 		}
 	}
 
@@ -804,7 +856,68 @@ export class AlmaLMS implements LibraryManagementSystem {
 			.sort((a, b) => (a.creationTime ?? '').localeCompare(b.creationTime ?? ''));
 	}
 
-	async loginUser(user: string, password?: string): Promise<boolean> {
+	private async fetchUserData(user: string): Promise<AlmaUserData | null> {
+		const params = new URLSearchParams(this.params.toString());
+		params.set('user_id_type', 'all_unique');
+
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.apiUrl}users/${encodeURIComponent(user)}?${params.toString()}`
+			);
+		} catch {
+			this.currentUserId = undefined;
+			throw new Error('Network error while verifying user');
+		}
+
+		if (!response.ok) return null;
+
+		try {
+			const userData = await response.json();
+			const parsedUserData = v.safeParse(UserSchema, userData);
+
+			if (!parsedUserData.success) return null;
+
+			return userData as AlmaUserData;
+		} catch {
+			return null;
+		}
+	}
+
+	private async verifyPinNumber(user: string, loginSecret: string): Promise<boolean> {
+		const userData = await this.fetchUserData(user);
+		return typeof userData?.pin_number === 'string' && userData.pin_number === loginSecret;
+	}
+
+	private async authenticateUser(user: string, loginSecret: string): Promise<boolean> {
+		const authParams = new URLSearchParams(this.params.toString());
+		authParams.set('op', 'auth');
+		authParams.set('password', loginSecret);
+		authParams.set('user_id_type', 'all_unique');
+		let response: Response;
+		try {
+			response = await fetch(
+				`${this.apiUrl}users/${encodeURIComponent(user)}?${authParams.toString()}`,
+				{
+					method: 'POST'
+				}
+			);
+		} catch {
+			this.currentUserId = undefined;
+			throw new Error('Network error while authenticating user');
+		}
+
+		if (!response.ok) {
+			logger.debug({ response }, 'Raw login response');
+			this.currentUserId = undefined;
+			return false;
+		}
+
+		this.currentUserId = user;
+		return true;
+	}
+
+	async resumeUserSession(user: string): Promise<boolean> {
 		const trimmedUser = user?.trim();
 
 		if (!trimmedUser) {
@@ -812,34 +925,43 @@ export class AlmaLMS implements LibraryManagementSystem {
 			return false;
 		}
 
-		// If the same user is already active and no password check is requested, skip revalidation
-		if (this.currentUserId === trimmedUser && !password) {
-			return true;
-		}
+		this.currentUserId = trimmedUser;
+		return true;
+	}
 
-		// TODO: Alma API key auth does not support password verification; keep the parameter for future SSO
-		let res: Response;
-		const loginParams = new URLSearchParams(this.params.toString());
-		loginParams.set('user_id_type', 'all_unique');
+	async loginUser(user: string, loginSecret?: string): Promise<boolean> {
+		const trimmedUser = user?.trim();
+		const trimmedLoginSecret = loginSecret?.trim();
 
-		try {
-			res = await fetch(
-				`${this.apiUrl}users/${encodeURIComponent(trimmedUser)}?${loginParams.toString()}`
-			);
-		} catch {
-			this.currentUserId = undefined;
-			throw new Error('Network error while verifying user');
-		}
-
-		if (!res.ok) {
+		if (!trimmedUser) {
 			this.currentUserId = undefined;
 			return false;
 		}
 
-		const userData = await res.json();
-		const parsedUserData = v.safeParse(UserSchema, userData);
+		if (this.pinLogin) {
+			if (!trimmedLoginSecret) {
+				this.currentUserId = undefined;
+				return false;
+			}
 
-		if (!parsedUserData.success) {
+			const pinVerified = await this.verifyPinNumber(trimmedUser, trimmedLoginSecret);
+			if (pinVerified) {
+				this.currentUserId = trimmedUser;
+				return true;
+			}
+
+			return this.authenticateUser(trimmedUser, trimmedLoginSecret);
+		}
+
+		// If the same user is already active and no login secret check is requested, skip revalidation.
+		if (this.currentUserId === trimmedUser && !trimmedLoginSecret) {
+			return true;
+		}
+
+		// TODO: Alma API key auth does not support password verification; keep the parameter for future SSO
+		const userData = await this.fetchUserData(trimmedUser);
+
+		if (!userData) {
 			this.currentUserId = undefined;
 			return false;
 		}
@@ -895,10 +1017,12 @@ export class AlmaLMS implements LibraryManagementSystem {
 			cover: 'https://picsum.dev/120/180?seed=' + parsedItemData.output.bib_data.isbn
 		};
 		result.returnDirective = this.buildReturnDirective(result);
+		const result = this.mapItemToMediaItem(parsedItemData.output, barcode);
 		this.setCachedItem(barcode, {
 			mmsId: parsedItemData.output.bib_data.mms_id,
 			holdingId: parsedItemData.output.holding_data.holding_id,
-			itemId: parsedItemData.output.item_data.pid
+			itemId: parsedItemData.output.item_data.pid,
+			isbns: extractIsbns(parsedItemData.output.bib_data.isbn)
 		});
 		return result;
 	}
@@ -907,7 +1031,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 		logger.debug({ barcode }, 'AlmaLMS.borrowItem called');
 
 		if (!this.currentUserId) {
-			return { ok: false, reason: 'No user is currently logged in' };
+			return { ok: false, reasonKey: 'error_no_user_logged_in' };
 		}
 
 		const checkout = this.resolveCheckoutDetails(context);
@@ -938,7 +1062,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			);
 		} catch (error) {
 			logger.error({ err: error }, 'Network error while borrowing item');
-			return { ok: false, reason: 'Network error while borrowing item' };
+			return { ok: false, reasonKey: 'error_network_borrow' };
 		}
 
 		if (!res.ok) {
@@ -961,18 +1085,18 @@ export class AlmaLMS implements LibraryManagementSystem {
 			parsedBody = JSON.parse(rawText);
 		} catch (error) {
 			logger.error({ err: error }, 'Failed to parse Alma borrow response');
-			return { ok: false, reason: 'Unexpected response format from Alma' };
+			return { ok: false, reasonKey: 'error_unexpected_alma_response' };
 		}
 
 		logger.trace({ itemData: parsedBody }, 'Raw borrow item response');
 		const parsedLoanData = v.safeParse(ItemLoanSchema, parsedBody);
 		if (!parsedLoanData.success) {
 			logger.error({ issues: parsedLoanData.issues }, 'Parsed loan data error');
-			return { ok: false, reason: 'Invalid loan data format' };
+			return { ok: false, reasonKey: 'error_invalid_loan_data' };
 		}
 
 		const mediaItem = this.mapLoanToMediaItem(parsedLoanData.output);
-		return { ok: true, item: mediaItem, message: 'Successfully borrowed' };
+		return { ok: true, item: mediaItem, messageKey: 'successfully_borrowed_message' };
 	}
 
 	async returnItem(barcode: string, context?: CheckoutContext): Promise<LmsActionResult> {
@@ -991,7 +1115,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			ids = this.getCachedItem(barcode);
 		}
 		if (!ids) {
-			return { ok: false, reason: 'Item not found for the given barcode' };
+			return { ok: false, reasonKey: 'error_item_not_found_for_barcode' };
 		}
 		const { mmsId, holdingId, itemId } = ids;
 
@@ -1007,7 +1131,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			);
 		} catch (error) {
 			logger.error({ err: error }, 'Network error while returning item');
-			return { ok: false, reason: 'Network error while returning item' };
+			return { ok: false, reasonKey: 'error_network_return' };
 		}
 
 		if (!res.ok) {
@@ -1030,7 +1154,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			parsedBody = JSON.parse(rawText);
 		} catch (error) {
 			logger.error({ err: error }, 'Failed to parse Alma return response');
-			return { ok: false, reason: 'Unexpected response format from Alma' };
+			return { ok: false, reasonKey: 'error_unexpected_alma_response' };
 		}
 
 		logger.trace({ itemData: parsedBody }, 'Raw return item response');
@@ -1038,20 +1162,21 @@ export class AlmaLMS implements LibraryManagementSystem {
 
 		if (!parsedItemData.success) {
 			logger.error({ issues: parsedItemData.issues }, 'Parsed return item data error');
-			return { ok: false, reason: 'Invalid item data format after return' };
+			return { ok: false, reasonKey: 'error_invalid_return_data' };
 		}
 
 		const mediaItem = this.mapItemToMediaItem(parsedItemData.output, barcode);
 		this.setCachedItem(barcode, {
 			mmsId: parsedItemData.output.bib_data.mms_id,
 			holdingId: parsedItemData.output.holding_data.holding_id,
-			itemId: parsedItemData.output.item_data.pid
+			itemId: parsedItemData.output.item_data.pid,
+			isbns: extractIsbns(parsedItemData.output.bib_data.isbn)
 		});
 
 		return {
 			ok: true,
 			item: mediaItem,
-			message: 'Successfully returned',
+			messageKey: 'successfully_returned_message',
 			directive: this.buildReturnDirective(mediaItem)
 		};
 	}

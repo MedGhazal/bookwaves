@@ -6,24 +6,59 @@
 	import { CircleX } from '@lucide/svelte';
 	import { clientLogger } from '$lib/client/logger';
 	import { m } from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
+	import type { Attachment } from 'svelte/attachments';
+	import type { LoginHelpImageConfig } from '$lib/types/login';
 
-	type LoginMode = 'username_password' | 'username_only' | 'scanner_only' | 'username_or_scanner';
+	type LoginMode =
+		| 'username_password'
+		| 'username_only'
+		| 'scanner_only'
+		| 'username_or_scanner'
+		| 'username_password_or_pin';
 
 	interface Props {
 		onSuccess: () => void;
 		onCancel?: () => void;
 		loginMode?: LoginMode;
-		loginHelpImage?: string;
+		loginHelpImage?: LoginHelpImageConfig;
+		scannerFocusAssist?: boolean;
+		topAlignedModal?: boolean;
 	}
 
-	let { onSuccess, onCancel, loginMode = 'username_password', loginHelpImage }: Props = $props();
+	let {
+		onSuccess,
+		onCancel,
+		loginMode = 'username_password',
+		loginHelpImage,
+		scannerFocusAssist = false,
+		topAlignedModal = false
+	}: Props = $props();
 
-	const requiresPassword = $derived(loginMode === 'username_password');
+	const helpImage = $derived.by(() => {
+		if (!loginHelpImage) return undefined;
+		if (typeof loginHelpImage === 'string') {
+			return loginHelpImage;
+		}
+		return loginHelpImage[getLocale()];
+	});
+
+	const requiresLoginSecret = $derived(
+		loginMode === 'username_password' || loginMode === 'username_password_or_pin'
+	);
+	const loginSecretLabel = $derived(
+		loginMode === 'username_password_or_pin' ? `${m.password()} / PIN` : m.password()
+	);
+	const missingLoginSecretMessage = $derived(
+		loginMode === 'username_password_or_pin'
+			? m.please_enter_a_password_or_pin()
+			: m.please_enter_a_password()
+	);
 	const hasCameraToggle = $derived(loginMode === 'username_or_scanner');
 	const scannerOnlyMode = $derived(loginMode === 'scanner_only');
 	const supportsScanner = $derived(hasCameraToggle || scannerOnlyMode);
 	let username = $state('');
-	let password = $state('');
+	let loginSecret = $state('');
 	let isLoading = $state(false);
 	let errorMessage = $state('');
 	let scannerOpen = $state(false);
@@ -34,23 +69,93 @@
 	let lastScannedAt = $state(0);
 	let scannerInstance: import('html5-qrcode').Html5Qrcode | null = null;
 	const SCAN_DUPLICATE_COOLDOWN_MS = 2500;
+	const LOGIN_SECRET_SCAN_MAX_CHAR_INTERVAL_MS = 30;
+	const LOGIN_SECRET_SCAN_MIN_LENGTH = 4;
+	const FOCUS_RECOVERY_DELAY_MS = 100;
 	const usernameInputId = 'username';
-	const passwordInputId = 'password';
+	const loginSecretInputId = 'login-secret';
 	const scannerElementId = 'login-qr-reader';
+	let usernameInput: HTMLInputElement | undefined;
+	let loginSecretInput: HTMLInputElement | undefined;
+	let lastLoginSecretCharacterAt = 0;
+	let loginSecretScanCandidate = '';
+	const captureUsernameInput: Attachment<HTMLInputElement> = (element) => {
+		usernameInput = element;
+		return () => {
+			if (usernameInput === element) usernameInput = undefined;
+		};
+	};
+	const captureLoginSecretInput: Attachment<HTMLInputElement> = (element) => {
+		loginSecretInput = element;
+		return () => {
+			if (loginSecretInput === element) loginSecretInput = undefined;
+		};
+	};
+
+	function focusUsernameInput() {
+		usernameInput?.focus();
+		usernameInput?.select();
+	}
+
+	function isInteractiveElement(element: Element): boolean {
+		return Boolean(
+			element.closest('input, button, textarea, select, label, a, [role="button"], [tabindex]')
+		);
+	}
+
+	function handleDocumentFocusRecovery(event: Event) {
+		if (!scannerFocusAssist) return;
+		if (event.target instanceof Element && isInteractiveElement(event.target)) return;
+
+		setTimeout(() => {
+			focusUsernameInput();
+		}, FOCUS_RECOVERY_DELAY_MS);
+	}
+
+	function handleLoginSecretCharacter(key: string) {
+		const now = Date.now();
+		const charInterval = now - lastLoginSecretCharacterAt;
+
+		loginSecretScanCandidate =
+			charInterval >= 0 && charInterval < LOGIN_SECRET_SCAN_MAX_CHAR_INTERVAL_MS
+				? loginSecretScanCandidate + key
+				: key;
+		lastLoginSecretCharacterAt = now;
+	}
 	const handleCancel = () => {
 		void stopScanner();
 		onCancel?.();
 	};
 
+	function handleLoginSecretKeydown(e: KeyboardEvent) {
+		if (!scannerFocusAssist) return;
+
+		if (e.key === 'Tab' || e.key === 'Enter') {
+			const scannedIdentifier = loginSecretScanCandidate.trim();
+			if (scannedIdentifier.length >= LOGIN_SECRET_SCAN_MIN_LENGTH) {
+				e.preventDefault();
+				username = scannedIdentifier;
+				loginSecret = '';
+				errorMessage = '';
+				focusUsernameInput();
+			}
+			loginSecretScanCandidate = '';
+		} else if (e.key.length === 1) {
+			handleLoginSecretCharacter(e.key);
+		} else {
+			loginSecretScanCandidate = '';
+		}
+	}
+
 	onMount(() => {
+		if (!scannerOnlyMode || scannerFocusAssist) {
+			focusUsernameInput();
+		}
+
 		if (scannerOnlyMode) {
 			void startScanner();
 			return;
 		}
-
-		const usernameInput = document.getElementById(usernameInputId) as HTMLInputElement | null;
-		usernameInput?.focus();
-		usernameInput?.select();
 	});
 
 	onDestroy(() => {
@@ -133,10 +238,9 @@
 			username = validatedUsername;
 			await stopScanner();
 
-			if (requiresPassword) {
+			if (requiresLoginSecret) {
 				await tick();
-				const passwordInput = document.getElementById(passwordInputId) as HTMLInputElement | null;
-				passwordInput?.focus();
+				loginSecretInput?.focus();
 				return;
 			}
 
@@ -161,8 +265,8 @@
 			return;
 		}
 
-		if (requiresPassword && !password) {
-			errorMessage = m.please_enter_a_password();
+		if (requiresLoginSecret && !loginSecret) {
+			errorMessage = missingLoginSecretMessage;
 			if (shouldAutoRestartScanner) {
 				void startScanner();
 			}
@@ -176,8 +280,8 @@
 			if (scannerOpen) {
 				await stopScanner();
 			}
-			const payload = requiresPassword
-				? { user: normalizedUsername, password }
+			const payload = requiresLoginSecret
+				? { user: normalizedUsername, loginSecret }
 				: { user: normalizedUsername };
 			const success = await loginUser(payload);
 
@@ -206,15 +310,21 @@
 	}
 </script>
 
-<div class="modal-open modal">
+<svelte:document onclick={handleDocumentFocusRecovery} ontouchend={handleDocumentFocusRecovery} />
+
+<div
+	class="modal modal-open"
+	style:place-items={topAlignedModal ? 'start center' : undefined}
+	style:padding-top={topAlignedModal ? '3rem' : undefined}
+>
 	<div
 		class="modal-box max-w-4xl rounded-3xl bg-base-100/95 text-base-content shadow-2xl ring-1 ring-base-300/70"
 	>
 		<div class="flex flex-col gap-6 md:flex-row md:items-stretch">
-			{#if loginHelpImage}
+			{#if helpImage}
 				<div class="md:w-72 md:shrink-0">
 					<img
-						src={loginHelpImage}
+						src={helpImage}
 						alt={m.login_required()}
 						class="h-full w-full rounded-2xl object-cover shadow-xl"
 					/>
@@ -247,8 +357,9 @@
 							type="text"
 							inputmode="text"
 							autocomplete="username"
-							class="input-bordered input input-lg w-full"
+							class="input-bordered input w-full input-lg"
 							bind:value={username}
+							{@attach captureUsernameInput}
 							readonly={scannerOnlyMode}
 							disabled={isLoading}
 						/>
@@ -289,18 +400,20 @@
 						{/if}
 					</div>
 
-					{#if requiresPassword}
+					{#if requiresLoginSecret}
 						<div class="form-control gap-2">
-							<label class="label" for="password">
-								<span class="label-text text-sm font-semibold">{m.password()} / PIN</span>
+							<label class="label" for={loginSecretInputId}>
+								<span class="label-text text-sm font-semibold">{loginSecretLabel}</span>
 							</label>
 							<input
-								id={passwordInputId}
+								id={loginSecretInputId}
 								type="password"
 								autocomplete="current-password"
-								class="input-bordered input input-lg w-full"
-								bind:value={password}
+								class="input-bordered input w-full input-lg"
+								bind:value={loginSecret}
+								{@attach captureLoginSecretInput}
 								disabled={isLoading}
+								onkeydown={handleLoginSecretKeydown}
 							/>
 						</div>
 					{/if}
@@ -308,14 +421,14 @@
 					<div class="modal-action mt-8 flex items-center justify-end gap-3">
 						<button
 							type="button"
-							class="btn px-5 btn-ghost"
+							class="btn btn-ghost px-5"
 							onclick={handleCancel}
 							disabled={isLoading}
 						>
 							{m.cancel()}
 						</button>
 						{#if !scannerOnlyMode}
-							<button class="btn px-6 btn-lg btn-accent" type="submit" disabled={isLoading}>
+							<button class="btn px-6 btn-accent btn-lg" type="submit" disabled={isLoading}>
 								{#if isLoading}
 									<span class="loading loading-spinner"></span>
 									{m.logging_in()}...

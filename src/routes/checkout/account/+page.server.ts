@@ -3,17 +3,22 @@ import { getLms } from '$lib/server/lms/resolve';
 import { clearAuthCookie, getAuthUserFromCookies } from '$lib/server/auth-cookies';
 import { getConfig, type LoginMode } from '$lib/server/config';
 import { logger } from '$lib/server/logger';
+import type { LoginHelpImageConfig } from '$lib/types/login';
 
 export const load = (async ({ cookies }) => {
 	const lms = getLms();
 	const userId = getAuthUserFromCookies(cookies);
 	let loginMode: LoginMode = 'username_password';
-	let loginHelpImage: string | undefined;
+	let loginHelpImage: LoginHelpImageConfig | undefined;
+	let scannerFocusAssist = false;
+	let topAlignedModal = false;
 
 	try {
 		const config = getConfig();
 		loginMode = config.login?.mode ?? 'username_password';
 		loginHelpImage = config.login?.login_help_image;
+		scannerFocusAssist = config.login?.scanner_focus_assist ?? false;
+		topAlignedModal = config.login?.top_aligned_modal ?? false;
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load login config; defaulting to username/password');
 	}
@@ -30,11 +35,13 @@ export const load = (async ({ cookies }) => {
 			authUser: null,
 			requiresAuth: true,
 			loginMode,
-			loginHelpImage
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
 		};
 	}
 
-	const loggedIn = await lms.loginUser(userId);
+	const loggedIn = await lms.resumeUserSession(userId);
 
 	if (!loggedIn) {
 		logger.warn({ userId }, 'Stored auth cookie failed to login in checkout/account');
@@ -49,7 +56,9 @@ export const load = (async ({ cookies }) => {
 			authUser: null,
 			requiresAuth: true,
 			loginMode,
-			loginHelpImage
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
 		};
 	}
 
@@ -78,7 +87,9 @@ export const load = (async ({ cookies }) => {
 			authUser: userId,
 			requiresAuth: false,
 			loginMode,
-			loginHelpImage
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
 		};
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load account data');
@@ -93,7 +104,9 @@ export const load = (async ({ cookies }) => {
 			authUser: null,
 			requiresAuth: true,
 			loginMode,
-			loginHelpImage
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
 		};
 	}
 }) satisfies PageServerLoad;

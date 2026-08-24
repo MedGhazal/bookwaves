@@ -127,8 +127,9 @@
 		{#if readerWarning}
 			<div class="mb-6 alert alert-warning shadow-lg">
 				<div>
-					<strong>Reader not configured.</strong>
-					{readerWarning} Contact IT/library staff.
+					<strong>{m.reader_not_configured()}</strong>
+					{readerWarning}
+					{m.contact_staff()}
 				</div>
 				<a
 					class="btn btn-ghost btn-sm"
@@ -173,7 +174,7 @@
 				</div>
 				<a
 					href="/checkout{queryString}"
-					class="btn shadow-xl btn-lg btn-accent"
+					class="btn shadow-xl btn-accent btn-lg"
 					onclick={stopIdleCountdown}
 				>
 					← {m.back()}
