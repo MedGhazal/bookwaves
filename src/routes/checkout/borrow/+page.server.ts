@@ -26,7 +26,15 @@ export const load = (async ({ cookies }) => {
 	if (!userId) {
 		logger.info('No auth cookie found for checkout/borrow load');
 		await lms.logoutUser();
-		return { account: null, authUser: null, requiresAuth: true, loginMode, loginHelpImage, scannerFocusAssist, topAlignedModal };
+		return {
+			account: null,
+			authUser: null,
+			requiresAuth: true,
+			loginMode,
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
+		};
 	}
 
 	const loggedIn = await lms.resumeUserSession(userId);
@@ -35,17 +43,41 @@ export const load = (async ({ cookies }) => {
 		logger.warn({ userId }, 'Stored auth cookie failed to login in checkout/borrow');
 		clearAuthCookie(cookies);
 		await lms.logoutUser();
-		return { account: null, authUser: null, requiresAuth: true, loginMode, loginHelpImage, scannerFocusAssist, topAlignedModal };
+		return {
+			account: null,
+			authUser: null,
+			requiresAuth: true,
+			loginMode,
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
+		};
 	}
 
 	try {
 		const account = await lms.getAccount();
 		logger.info({ userId }, 'Loaded checkout/borrow account data');
-		return { account, authUser: userId, requiresAuth: false, loginMode, loginHelpImage, scannerFocusAssist, topAlignedModal  };
+		return {
+			account,
+			authUser: userId,
+			requiresAuth: false,
+			loginMode,
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
+		};
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load account data');
 		clearAuthCookie(cookies);
 		await lms.logoutUser();
-		return { account: null, authUser: null, requiresAuth: true, loginMode, loginHelpImage, scannerFocusAssist, topAlignedModal };
+		return {
+			account: null,
+			authUser: null,
+			requiresAuth: true,
+			loginMode,
+			loginHelpImage,
+			scannerFocusAssist,
+			topAlignedModal
+		};
 	}
 }) satisfies PageServerLoad;
