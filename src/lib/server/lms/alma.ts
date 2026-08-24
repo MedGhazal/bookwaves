@@ -16,34 +16,34 @@ import { buildProviderCoverUrl, type CoverImageProvider } from './cover-image-pr
 const DEFAULT_API_URL = 'https://api-eu.hosted.exlibrisgroup.com/almaws/v1/';
 
 type ReturnRule = {
-  field: string;
-  in?: string[];
-  equals?: string | boolean | number;
-  exists?: boolean;
-}
+	field: string;
+	in?: string[];
+	equals?: string | boolean | number;
+	exists?: boolean;
+};
 
 type ReturnCondition = {
-  any?: ReturnRule[];
-  all?: ReturnRule[];
-  always?: boolean;
-}
+	any?: ReturnRule[];
+	all?: ReturnRule[];
+	always?: boolean;
+};
 
 type ReturnDirective = {
-  binId: string;
-  priority: number;
-  message: Record<string, string>;
-  label: Record<string, string>;
-  color: string;
-  sort_order: number;
-  when?: ReturnCondition
-}
+	binId: string;
+	priority: number;
+	message: Record<string, string>;
+	label: Record<string, string>;
+	color: string;
+	sort_order: number;
+	when?: ReturnCondition;
+};
 
 type CheckoutProfile = {
 	id: string;
 	library: string;
 	circulation_desk: string;
 	type?: string;
-    return_directives?: ReturnDirective[];
+	return_directives?: ReturnDirective[];
 };
 
 type KnownItemIdentity = {
@@ -259,72 +259,81 @@ export class AlmaLMS implements LibraryManagementSystem {
 	private params: URLSearchParams;
 	private itemCache = new Map<string, KnownItemIdentity>();
 	private checkoutProfiles = new Map<string, CheckoutProfile>();
-    private returnDirectives = new Map<string, Array<ReturnDirective>>();
+	private returnDirectives = new Map<string, Array<ReturnDirective>>();
 
-    private matchesRule(rule: ReturnRule, item: MediaItem): boolean {
-        const value = item[rule.field as keyof MediaItem];
-        if (rule.exists !== undefined) {
-            return rule.exists
-                ? value !== undefined && value !== null
-                : value === undefined || value === null;
-        }
-        if (rule.in !== undefined) {
-            return value !== undefined &&
-                rule.in.includes(String(value));
-        }
-        if (rule.not_in !== undefined) {
-            return value === undefined ||
-                !rule.in.includes(String(value));
-        }
-        if (rule.equals !== undefined) {
-            return value === rule.equals;
-        }
-        return false;
-    }
+	private matchesRule(rule: ReturnRule, item: MediaItem): boolean {
+		const value = item[rule.field as keyof MediaItem];
+		if (rule.exists !== undefined) {
+			return rule.exists
+				? value !== undefined && value !== null
+				: value === undefined || value === null;
+		}
+		if (rule.in !== undefined) {
+			return value !== undefined && rule.in.includes(String(value));
+		}
+		if (rule.not_in !== undefined) {
+			return value === undefined || !rule.in.includes(String(value));
+		}
+		if (rule.equals !== undefined) {
+			return value === rule.equals;
+		}
+		return false;
+	}
 
-    private matches(condition: ReturnCondition | undefined, item: MediaItem): boolean {
-        if (!condition) { return false; }
-        if (condition.always === true) { return true; }
-        if (condition.any) { return condition.any.some(child => this.matchesRule(child, item)); }
-        if (condition.all) { return condition.all.every(child => this.matchesRule(child, item)); }
-        return false;
-    }
+	private matches(condition: ReturnCondition | undefined, item: MediaItem): boolean {
+		if (!condition) {
+			return false;
+		}
+		if (condition.always === true) {
+			return true;
+		}
+		if (condition.any) {
+			return condition.any.some((child) => this.matchesRule(child, item));
+		}
+		if (condition.all) {
+			return condition.all.every((child) => this.matchesRule(child, item));
+		}
+		return false;
+	}
 	public pinLogin?: boolean;
 
 	private buildReturnDirective(item: MediaItem): LmsReturnDirective | undefined {
-        const library = item.library_code?.toLowerCase() ?? '';
-        if (library === undefined || library === "") {
-            return {
-                binId: "",
-                label: "",
-                message: "",
-                color: "",
-                sortOrder: 1
-            };
-        }
-        const location = item.location_code?.toLowerCase() ?? '';
-        // const circulation_desk = "DEFAULT_CIRC_DESK".toLowerCase();
-        // const circulation_desk = item.location?.toLowerCase() ?? '';
-        const circulation_desk = item.circulation_desk_code?.toLowerCase() ?? "DEFAULT_CIRC_DESK".toLowerCase();
-        const key = `${library.trim()}:${circulation_desk.trim()}`.toLowerCase();
-        const returnDirectives = this.returnDirectives.get(key);
-        if (returnDirectives == undefined) {
-            throw new Error(`Return directives not defined for the library ${library} and ${circulation_desk}`);
-        }
-        logger.debug({ returnDirectives }, `Return directives of ${key}`);
-        for (const directive of returnDirectives.sort((a, b) => b.priority - a.priority)) {
-            if (this.matches(directive.when, item)) {
-                logger.debug({ directive }, `Matched directive of ${key}`);
-                const locale = getLocale();
-                return {
-                    binId: directive.binId,
-                    label: directive.label[locale] ?? directive.label.en,
-                    message: directive.message[locale] ?? directive.message.en,
-                    color: directive.color,
-                    sortOrder: directive.sort_order
-                };
-            }
-        }
+		const library = item.library_code?.toLowerCase() ?? '';
+		if (library === undefined || library === '') {
+			return {
+				binId: '',
+				label: '',
+				message: '',
+				color: '',
+				sortOrder: 1
+			};
+		}
+		const location = item.location_code?.toLowerCase() ?? '';
+		// const circulation_desk = "DEFAULT_CIRC_DESK".toLowerCase();
+		// const circulation_desk = item.location?.toLowerCase() ?? '';
+		const circulation_desk =
+			item.circulation_desk_code?.toLowerCase() ?? 'DEFAULT_CIRC_DESK'.toLowerCase();
+		const key = `${library.trim()}:${circulation_desk.trim()}`.toLowerCase();
+		const returnDirectives = this.returnDirectives.get(key);
+		if (returnDirectives == undefined) {
+			throw new Error(
+				`Return directives not defined for the library ${library} and ${circulation_desk}`
+			);
+		}
+		logger.debug({ returnDirectives }, `Return directives of ${key}`);
+		for (const directive of returnDirectives.sort((a, b) => b.priority - a.priority)) {
+			if (this.matches(directive.when, item)) {
+				logger.debug({ directive }, `Matched directive of ${key}`);
+				const locale = getLocale();
+				return {
+					binId: directive.binId,
+					label: directive.label[locale] ?? directive.label.en,
+					message: directive.message[locale] ?? directive.message.en,
+					color: directive.color,
+					sortOrder: directive.sort_order
+				};
+			}
+		}
 	}
 
 	private getCachedItem(barcode: string) {
@@ -611,17 +620,19 @@ export class AlmaLMS implements LibraryManagementSystem {
 
 		this.apiUrl = apiUrl;
 		this.apiKey = apiKey;
-        this.returnDirectives = new Map();
-        for (const profile of checkoutProfiles) {
-            const key = `${profile.library.trim()}:${profile.circulation_desk.trim()}`.toLowerCase();
-            logger.trace({ key }, "Map key to return directives");
-            const returnDirectives = profile.return_directives;
-            logger.trace({ returnDirectives }, `Return Directives of key ${key}`);
-            if (returnDirectives === undefined) {
-                throw new Error(`Return directives not configured for library ${profile.library} and circulation_desk ${profile.circulation_desk}`);
-            }
-            this.returnDirectives.set(key, returnDirectives);
-        }
+		this.returnDirectives = new Map();
+		for (const profile of checkoutProfiles) {
+			const key = `${profile.library.trim()}:${profile.circulation_desk.trim()}`.toLowerCase();
+			logger.trace({ key }, 'Map key to return directives');
+			const returnDirectives = profile.return_directives;
+			logger.trace({ returnDirectives }, `Return Directives of key ${key}`);
+			if (returnDirectives === undefined) {
+				throw new Error(
+					`Return directives not configured for library ${profile.library} and circulation_desk ${profile.circulation_desk}`
+				);
+			}
+			this.returnDirectives.set(key, returnDirectives);
+		}
 		this.pinLogin = pinLogin;
 		this.coverImageProvider = coverImageProvider;
 		this.checkoutProfiles = new Map(
