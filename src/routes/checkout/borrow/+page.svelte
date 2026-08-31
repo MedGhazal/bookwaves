@@ -593,6 +593,7 @@
 											<RFIDItem
 												item={item.rfidData}
 												showBadges={false}
+												showBin={false}
 												bind:this={item.component}
 												onMediaItemLoaded={(mediaItem) => handleMediaItemLoaded(item, mediaItem)}
 											/>

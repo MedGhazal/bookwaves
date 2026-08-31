@@ -33,6 +33,16 @@
 	// Get current query string to preserve reader config
 	let queryString = $derived(page.url.search);
 
+	// "Prüfen" shows the same shelf instruction as "Rückgabe", so it resolves
+	// return directives from the same terminal.
+	const lmsType = $derived(data.lmsType ?? 'alma');
+	const checkoutProfileId = $derived(
+		data.checkoutProfileId ?? page.url.searchParams.get('checkout_profile_id')
+	);
+	const checkoutContext = $derived(
+		checkoutProfileId && lmsType.toLowerCase() === 'alma' ? { checkoutProfileId } : undefined
+	);
+
 	const idleCountdown = createIdleCountdown({
 		seconds: IDLE_TIMEOUT_SECONDS,
 		onTick: (remainingSeconds) => {
@@ -196,7 +206,7 @@
 							animate:flip={{ duration: 200 }}
 						>
 							<div class="p-4 hover:bg-base-200">
-								<RFIDItem {item} showBadges={false} />
+								<RFIDItem {item} showBadges={false} {checkoutContext} />
 							</div>
 						</li>
 					{:else}

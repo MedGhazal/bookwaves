@@ -47,3 +47,23 @@ _Avoid_: checkout failure, LMS security status
 **Successful item with RFID warning**:
 A borrow or return item whose library transaction succeeded but whose RFID security update still needs attention. The item remains successful for circulation purposes while the RFID warning tells the operator what still needs fixing.
 _Avoid_: failed checkout item, partial failure
+
+**Return cart**:
+A physical cart at a circulation desk onto which returned media items are placed, distinguished by colour and by name. Which carts exist is a property of the desk, not of the media item.
+_Avoid_: bin, shelf, sorting bin, Regal
+
+**Return directive**:
+The instruction telling a user which return cart a media item belongs on, in their own language and naming the cart in words as well as by colour.
+_Avoid_: bin assignment, sorting rule, shelf badge
+
+**Onward transit**:
+A returned media item's continuing journey to another library site, which must stay recorded in the library management system because the item leaves this site in someone else's care. An item moved between desks within one site has none, even though a person still carries it.
+_Avoid_: transfer, routing, in-transit status, Transport
+
+**Shelving position**:
+Where a media item belongs at the moment it is returned, as a library and a location: the temporary pair while the item is on loan to one, such as a Semesterapparat, and the permanent pair otherwise. Distinct from the owning library, which does not change when a book moves to a Semesterapparat.
+_Avoid_: home library, permanent location, temp location, Standort
+
+**Patron request**:
+A request for a media item made by a person, as opposed to one the library management system raises for itself while routing an item. Only a patron request means somebody is waiting for the book, so only a patron request belongs on the reserved cart.
+_Avoid_: request, hold, work order, Vormerkung

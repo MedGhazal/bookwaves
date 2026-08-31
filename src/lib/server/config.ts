@@ -63,8 +63,26 @@ export interface ShelfCheck {
 	value: string;
 }
 
+/**
+ * The `MediaItem` fields a return rule may match on. A rule naming anything
+ * else is a configuration error rather than a rule that silently never matches.
+ */
+export const RETURN_RULE_FIELDS = [
+	'process_type',
+	'library_code',
+	'location_code',
+	'shelving_library_code',
+	'shelving_location_code',
+	'has_request',
+	'pickup_location_library'
+] as const;
+export type ReturnRuleField = (typeof RETURN_RULE_FIELDS)[number];
+
+const RETURN_RULE_OPERATORS = ['in', 'not_in', 'equals', 'exists'] as const;
+type ReturnRuleOperator = (typeof RETURN_RULE_OPERATORS)[number];
+
 export interface ReturnRule {
-	field: string;
+	field: ReturnRuleField;
 	in?: string[];
 	not_in?: string[];
 	equals?: string | boolean | number;
@@ -77,14 +95,26 @@ export interface ReturnCondition {
 	always?: boolean;
 }
 
+/**
+ * The circulation desk BookWaves scans an item in at a second time, to finish a
+ * transit it was never meant to keep -- a hold whose shelf is at another desk.
+ */
+export interface CompleteTransitAt {
+	library: string;
+	circulation_desk: string;
+}
+
 export interface ReturnDirective {
 	binId: string;
-	priority: number;
-	message: Record<string, string>;
-	label: Record<string, string>;
+	message: Partial<Record<Locale, string>>;
+	label: Partial<Record<Locale, string>>;
 	color: string;
-	sort_order: number;
 	when?: ReturnCondition;
+	/**
+	 * Where to scan the item in again so a transit it should not keep is resolved.
+	 * Absent means leave the item wherever Alma put it.
+	 */
+	complete_transit_at?: CompleteTransitAt;
 }
 
 export interface CheckoutProfileConfig {
@@ -133,7 +163,8 @@ export interface LMSConfig {
 	checkout?: CheckoutConfig;
 	theme?: ThemeConfig;
 	middleware_instances: MiddlewareInstanceConfig[];
-	global_return_directives?: ReturnDirective[];
+	/** Raw YAML; validated into `ReturnDirective[]` by `parseGlobalReturnDirectives`. */
+	global_return_directives?: unknown;
 }
 
 const DEFAULT_LOGIN_MODE: LoginMode = 'username_password';
@@ -171,27 +202,6 @@ const DEFAULT_THEME_CONFIG: ThemeConfig = {
 	},
 	logo: undefined
 };
-const DEFAULT_RETURN_DIRECTIVE_COLOR_CONFIG: string = 'blue';
-const DEFAULT_RETURN_DIRECTIVE_MESSAGE_CONFIG: Record<string, string> = {
-	de: 'Bitte legen Sie das Medium in das blaue Regal.',
-	en: 'lease place this item in the blue shelf.'
-};
-const DEFAULT_RETURN_DIRECTIVE_LABEL_CONFIG: Record<string, string> = {
-	de: 'Blaue Regal',
-	en: 'Blue shelf'
-};
-const DEFAULT_RETURN_DIRECTIVES_CONFIG: ReturnDirective[] = [
-	{
-		binId: 'main',
-		priority: 0,
-		message: DEFAULT_RETURN_DIRECTIVE_MESSAGE_CONFIG,
-		label: DEFAULT_RETURN_DIRECTIVE_LABEL_CONFIG,
-		color: DEFAULT_RETURN_DIRECTIVE_COLOR_CONFIG,
-		sort_order: 2,
-		when: { always: true }
-	}
-];
-
 function normalizeCssColor(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
 	const trimmed = value.trim();
@@ -314,50 +324,299 @@ function parseTaggingConfig(data: LMSConfig): TaggingConfig {
 	};
 }
 
-function parseGlobalReturnDirectiveConfig(data: LMSConfig): ReturnDirective[] {
-	if (data.global_return_directives === undefined) return DEFAULT_RETURN_DIRECTIVES_CONFIG;
+function parseLocalizedText(value: unknown, path: string): Partial<Record<Locale, string>> {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be a map of locale to text`);
+	}
 
-	return data.global_return_directives.map((returnDirective) => {
-		return {
-			binId: returnDirective.binId,
-			priority: returnDirective.priority,
-			label: returnDirective.label,
-			message: returnDirective.message,
-			color: returnDirective.color,
-			when: returnDirective.when,
-			sort_order: returnDirective.sort_order
-		};
-	});
+	const values = value as Partial<Record<Locale, unknown>>;
+
+	// A non-locale key is almost always a `when` block that lost an indentation
+	// level and landed inside the text above it. Unchecked it is dropped in
+	// silence, and the directive it belonged to is dead without saying so.
+	const unknownKeys = Object.keys(values).filter(
+		(key) => !(locales as readonly string[]).includes(key)
+	);
+	if (unknownKeys.length > 0) {
+		throw new Error(
+			`Invalid configuration: ${path} has unknown key(s): ${unknownKeys.join(', ')}. ` +
+				`Only locales are allowed here (${locales.join(', ')}). ` +
+				`A "when" key in this list is indented one level too deep.`
+		);
+	}
+
+	const localized: Partial<Record<Locale, string>> = {};
+	for (const locale of locales) {
+		const text = sanitizeNonEmptyString(values[locale]);
+		if (text) localized[locale] = text;
+	}
+
+	if (Object.keys(localized).length === 0) {
+		throw new Error(
+			`Invalid configuration: ${path} must define text for at least one of: ${locales.join(', ')}`
+		);
+	}
+
+	return localized;
 }
 
-function parseSpecialReturnDirectiveConfig(
-	global: ReturnDirective[],
-	override: Partial<ReturnDirective> & { binId: string }
-): ReturnDirective {
-	const globalReturnDirectiveOfBin = global.find(
-		(returnDirective) => returnDirective.binId === override.binId
-	);
-	if (globalReturnDirectiveOfBin === undefined) {
-		throw new Error(`Global return directive not found for binId ${override.binId}`);
+function parseReturnRule(value: unknown, path: string): ReturnRule {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an object`);
 	}
-	const priority =
-		override.priority === undefined ? globalReturnDirectiveOfBin.priority : override.priority;
-	const label = override.label === undefined ? globalReturnDirectiveOfBin.label : override.label;
-	const message =
-		override.message === undefined ? globalReturnDirectiveOfBin.message : override.message;
-	const color = override.color === undefined ? globalReturnDirectiveOfBin.color : override.color;
-	const sortOrder =
-		override.sort_order === undefined ? globalReturnDirectiveOfBin.sort_order : override.sort_order;
-	const when = override.when === undefined ? globalReturnDirectiveOfBin.when : override.when;
+
+	const raw = value as Record<string, unknown>;
+	const field = sanitizeNonEmptyString(raw.field);
+	if (!field || !RETURN_RULE_FIELDS.includes(field as ReturnRuleField)) {
+		throw new Error(
+			`Invalid configuration: ${path}.field must be one of: ${RETURN_RULE_FIELDS.join(', ')}`
+		);
+	}
+
+	// Catches `equal: true` and friends, which would otherwise parse as a rule
+	// that can never match.
+	const unknownKeys = Object.keys(raw).filter(
+		(key) => key !== 'field' && !RETURN_RULE_OPERATORS.includes(key as ReturnRuleOperator)
+	);
+	if (unknownKeys.length > 0) {
+		throw new Error(
+			`Invalid configuration: ${path} has unknown key(s) ${unknownKeys.join(', ')}; ` +
+				`expected one of: ${RETURN_RULE_OPERATORS.join(', ')}`
+		);
+	}
+
+	const operators = RETURN_RULE_OPERATORS.filter((operator) => raw[operator] !== undefined);
+	if (operators.length !== 1) {
+		throw new Error(
+			`Invalid configuration: ${path} must use exactly one of: ${RETURN_RULE_OPERATORS.join(', ')}`
+		);
+	}
+
+	const rule: ReturnRule = { field: field as ReturnRuleField };
+	const [operator] = operators;
+
+	if (operator === 'in' || operator === 'not_in') {
+		const list = raw[operator];
+		if (!Array.isArray(list) || list.length === 0) {
+			throw new Error(`Invalid configuration: ${path}.${operator} must be a non-empty array`);
+		}
+		rule[operator] = list.map((entry) => String(entry));
+		return rule;
+	}
+
+	if (operator === 'exists') {
+		if (typeof raw.exists !== 'boolean') {
+			throw new Error(`Invalid configuration: ${path}.exists must be a boolean`);
+		}
+		rule.exists = raw.exists;
+		return rule;
+	}
+
+	const equals = raw.equals;
+	if (typeof equals !== 'string' && typeof equals !== 'boolean' && typeof equals !== 'number') {
+		throw new Error(`Invalid configuration: ${path}.equals must be a string, boolean or number`);
+	}
+	rule.equals = equals;
+	return rule;
+}
+
+function parseReturnCondition(value: unknown, path: string): ReturnCondition {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an object`);
+	}
+
+	const raw = value as Record<string, unknown>;
+	const condition: ReturnCondition = {};
+
+	if (raw.always !== undefined) {
+		if (typeof raw.always !== 'boolean') {
+			throw new Error(`Invalid configuration: ${path}.always must be a boolean`);
+		}
+		condition.always = raw.always;
+	}
+
+	for (const key of ['any', 'all'] as const) {
+		const rules = raw[key];
+		if (rules === undefined) continue;
+		if (!Array.isArray(rules) || rules.length === 0) {
+			throw new Error(`Invalid configuration: ${path}.${key} must be a non-empty array`);
+		}
+		condition[key] = rules.map((rule, index) => parseReturnRule(rule, `${path}.${key}[${index}]`));
+	}
+
+	if (condition.always === undefined && !condition.any && !condition.all) {
+		throw new Error(`Invalid configuration: ${path} must define at least one of: any, all, always`);
+	}
+
+	return condition;
+}
+
+function parseCompleteTransitAt(value: unknown, path: string): CompleteTransitAt {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an object`);
+	}
+
+	const raw = value as Record<string, unknown>;
+	const library = sanitizeNonEmptyString(raw.library);
+	const circulationDesk = sanitizeNonEmptyString(raw.circulation_desk);
+	if (!library || !circulationDesk) {
+		throw new Error(`Invalid configuration: ${path} requires both library and circulation_desk`);
+	}
+
+	return { library, circulation_desk: circulationDesk };
+}
+
+function parseReturnDirective(value: unknown, path: string): ReturnDirective {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an object`);
+	}
+
+	const raw = value as Record<string, unknown>;
+	const binId = sanitizeNonEmptyString(raw.binId);
+	if (!binId) {
+		throw new Error(`Invalid configuration: ${path}.binId is required`);
+	}
+
+	const color = normalizeCssColor(raw.color);
+	if (!color) {
+		throw new Error(`Invalid configuration: ${path}.color is required and must be a CSS colour`);
+	}
+
+	// Parsed before the `when` check below on purpose: a misindented `when` shows
+	// up here as an unknown key, and naming that key points at the typo, where the
+	// missing condition it causes only reports the symptom.
+	const label = parseLocalizedText(raw.label, `${path}.label`);
+	const message = parseLocalizedText(raw.message, `${path}.message`);
+
+	// A global cart with no condition can never match. Profile entries are
+	// different: they omit `when` to inherit the global one, parsed elsewhere.
+	if (raw.when === undefined) {
+		throw new Error(
+			`Invalid configuration: ${path}.when is required. ` +
+				`A directive with no condition can never match, so it would be silently dead.`
+		);
+	}
+
 	return {
-		binId: override.binId,
-		priority: priority,
-		label: label,
-		message: message,
-		color: color,
-		when: when,
-		sort_order: sortOrder
+		binId,
+		label,
+		message,
+		color,
+		when: parseReturnCondition(raw.when, `${path}.when`),
+		complete_transit_at:
+			raw.complete_transit_at === undefined
+				? undefined
+				: parseCompleteTransitAt(raw.complete_transit_at, `${path}.complete_transit_at`)
 	};
+}
+
+/** Without a catch-all, a returned item can fall off the end of the list and get no instruction. */
+function requireCatchAllDirective(directives: ReturnDirective[], path: string, hint: string): void {
+	if (directives.some((directive) => directive.when?.always === true)) return;
+	throw new Error(
+		`Invalid configuration: ${path} must include a catch-all directive (when.always: true) ` +
+			`so every returned item is assigned a return cart${hint}`
+	);
+}
+
+function parseGlobalReturnDirectives(data: LMSConfig): ReturnDirective[] {
+	// Absent configuration means the feature is off: no directives, no badge.
+	if (data.global_return_directives === undefined) return [];
+
+	if (!Array.isArray(data.global_return_directives)) {
+		throw new Error('Invalid configuration: global_return_directives must be an array');
+	}
+
+	const directives = data.global_return_directives.map((directive, index) =>
+		parseReturnDirective(directive, `global_return_directives[${index}]`)
+	);
+
+	const seen = new Set<string>();
+	for (const directive of directives) {
+		if (seen.has(directive.binId)) {
+			throw new Error(
+				`Invalid configuration: duplicate global_return_directives binId "${directive.binId}"`
+			);
+		}
+		seen.add(directive.binId);
+	}
+
+	requireCatchAllDirective(directives, 'global_return_directives', '');
+	return directives;
+}
+
+/**
+ * Resolves one profile-level entry against the global directive it references.
+ * Only the keys present on the override replace the global values, so a bare
+ * `- binId: main` inherits the global definition wholesale.
+ */
+function mergeReturnDirective(
+	globalDirectives: ReturnDirective[],
+	value: unknown,
+	path: string
+): ReturnDirective {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an object`);
+	}
+
+	const raw = value as Record<string, unknown>;
+	const binId = sanitizeNonEmptyString(raw.binId);
+	if (!binId) {
+		throw new Error(`Invalid configuration: ${path}.binId is required`);
+	}
+
+	const base = globalDirectives.find((directive) => directive.binId === binId);
+	if (!base) {
+		throw new Error(
+			`Invalid configuration: ${path}.binId "${binId}" has no matching entry in global_return_directives`
+		);
+	}
+
+	const color = raw.color === undefined ? base.color : normalizeCssColor(raw.color);
+	if (!color) {
+		throw new Error(`Invalid configuration: ${path}.color must be a CSS colour`);
+	}
+
+	return {
+		binId,
+		label: raw.label === undefined ? base.label : parseLocalizedText(raw.label, `${path}.label`),
+		message:
+			raw.message === undefined ? base.message : parseLocalizedText(raw.message, `${path}.message`),
+		color,
+		when: raw.when === undefined ? base.when : parseReturnCondition(raw.when, `${path}.when`),
+		complete_transit_at:
+			raw.complete_transit_at === undefined
+				? base.complete_transit_at
+				: parseCompleteTransitAt(raw.complete_transit_at, `${path}.complete_transit_at`)
+	};
+}
+
+function parseProfileReturnDirectives(
+	globalDirectives: ReturnDirective[],
+	value: unknown,
+	path: string
+): ReturnDirective[] {
+	// A profile that says nothing inherits the global set, including its emptiness.
+	if (value === undefined) return globalDirectives;
+
+	if (!Array.isArray(value)) {
+		throw new Error(`Invalid configuration: ${path} must be an array`);
+	}
+
+	// An explicit empty list opts this desk out of carts entirely. The catch-all
+	// rule guards a populated list; there is nothing here to fall off the end of.
+	if (value.length === 0) return [];
+
+	const directives = value.map((directive, index) =>
+		mergeReturnDirective(globalDirectives, directive, `${path}[${index}]`)
+	);
+
+	requireCatchAllDirective(
+		directives,
+		path,
+		'; add the bin that defines it, for example "- binId: main"'
+	);
+	return directives;
 }
 
 function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
@@ -368,7 +627,7 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 	}
 
 	const lmsType = typeof data.lms?.type === 'string' ? data.lms.type : '';
-	const globalReturnDirectives = parseGlobalReturnDirectiveConfig(data);
+	const globalReturnDirectives = parseGlobalReturnDirectives(data);
 
 	return data.checkout.profiles.map((profile, index) => {
 		if (!profile || typeof profile !== 'object') {
@@ -380,14 +639,11 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 		const circulationDesk =
 			typeof profile.circulation_desk === 'string' ? profile.circulation_desk.trim() : '';
 		const type = typeof profile.type === 'string' ? profile.type.trim() : lmsType;
-		let returnDirectives: ReturnDirective[];
-		if (profile.return_directives === undefined) {
-			returnDirectives = globalReturnDirectives;
-		} else {
-			returnDirectives = profile.return_directives.map((returnDirective) => {
-				return parseSpecialReturnDirectiveConfig(globalReturnDirectives, returnDirective);
-			});
-		}
+		const returnDirectives = parseProfileReturnDirectives(
+			globalReturnDirectives,
+			profile.return_directives,
+			`checkout.profiles[${index}].return_directives`
+		);
 
 		if (!id || !library || !circulationDesk) {
 			throw new Error(

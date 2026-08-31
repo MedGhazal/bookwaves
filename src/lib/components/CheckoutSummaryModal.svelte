@@ -22,14 +22,6 @@
 
 	const actionText = $derived(session.type === 'borrow' ? m.borrowed() : m.returned());
 
-	const fallbackDirective: LmsReturnDirective = {
-		binId: 'unspecified',
-		label: 'No bin assigned',
-		color: 'neutral',
-		message: 'No sorting instruction provided',
-		sortOrder: 99
-	};
-
 	function getDirectiveBadgeClass(color?: string) {
 		switch (color) {
 			case 'red':
@@ -47,7 +39,9 @@
 
 	function getReturnDirective(item: SessionItem): LmsReturnDirective | null {
 		if (session.type !== 'return') return null;
-		return item.directive ?? item.mediaItem?.returnDirective ?? fallbackDirective;
+		// No directive means no instruction was configured for this desk; show nothing
+		// rather than inventing a cart the library may not own.
+		return item.directive ?? item.mediaItem?.returnDirective ?? null;
 	}
 
 	const idleCountdown = createIdleCountdown({

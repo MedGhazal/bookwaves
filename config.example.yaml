@@ -37,62 +37,137 @@ login:
   #     url: 'https://url-to-validate-login-scans/validate' # URL to validate CampusID login scans
   #     api_key: 'replace_me'
 
+# Return directives tell the user which return cart to place a returned item on.
+#
+# Declare every cart once here, then reference it per terminal under
+# checkout.profiles[].return_directives. Directives are evaluated in the order
+# they appear and the FIRST match wins, so put specific carts above general ones.
+# The last cart must be a catch-all (when.always: true) or the server refuses to
+# start, so that every returned item gets an instruction.
+#
+# A `when` condition combines:
+#   any    - at least one of these rules must match
+#   all    - every one of these rules must match
+#   always - matches unconditionally (the catch-all)
+# Declaring both `any` and `all` means both sides must match.
+#
+# A rule names one field and uses exactly one operator:
+#   in      - the field value is in the given list
+#   not_in  - the field value is not in the given list, or the field is absent
+#   equals  - the field value equals the given string, boolean or number
+#   exists  - true if the field is present, false if it is absent
+#
+# Only these fields may be matched on: process_type, library_code,
+# location_code, shelving_library_code, shelving_location_code, has_request and
+# pickup_location_library. Anything else is rejected at startup rather than
+# silently never matching.
+#
+# Prefer shelving_library_code and shelving_location_code: they say where the
+# item belongs right now, following a temporary location such as a
+# Semesterapparat. library_code and location_code are the permanent home, which
+# a book on temporary loan has left.
+#
+# Omitting global_return_directives entirely turns the feature off: no badge is
+# shown and returns keep working.
 global_return_directives:
-  - binId: fatal
-    color: red
-    priority: 100
+  # ORDER MATTERS, and the obvious order is wrong. A hold is collected wherever
+  # the patron asked, whoever owns the book, so ask "does it travel?" first:
+  #
+  #   1. Hold to be collected elsewhere -> it travels    (grey)
+  #   2. Any other hold                 -> it stays here (red)
+  #   3. Owned somewhere else           -> it goes home  (grey)
+  #   4. Otherwise                      -> reshelve      (yellow)
+  #
+  # Put ownership first and two cases break: a book owned elsewhere but collected
+  # here is sent away from the patron waiting for it, and one owned here but
+  # collected elsewhere never travels.
+
+  # 1. A hold to be collected at ANOTHER library: it travels, even though a
+  # patron is waiting for it.
+  #
+  # The `exists` rule is load-bearing. `not_in` alone also matches an ABSENT
+  # field, so without it every hold would land here the moment the requests call
+  # failed. Anything unknown falls through to the red cart, which keeps it.
+  - binId: requested_elsewhere
+    color: grey
     label:
-      de: 'Rote Regal'
-      en: 'red shelf'
+      de: 'Grauer Wagen'
+      en: 'Grey cart'
     message:
-      de: 'Bitte wenden Sie sich an einem Bibliothekmitarbeiter.'
-      en: 'Please go to the main desk'
-    sort_order: 1
-    # when defines when a book is assigned to the bin
-    # any if only one condition must be true
-    # all if all conditions must be true
-    # and the rules can be:
-    # - in to check if the field value is in the specified list
-    # - not_in to check if the field value is not in the specified list
-    # - equals to check if the field value equals the specified value
-    # - to check if the field exists
+      de: 'Bitte legen Sie den Band auf den grauen Wagen.'
+      en: 'Please place this item on the grey cart.'
+    when:
+      all:
+        - field: pickup_location_library
+          exists: true
+        - field: pickup_location_library
+          not_in: ['MAIN_LIBRARY']
+
+  # 2. Any remaining hold is collected here, so it stays on the red cart.
+  #
+  # Keyed on has_request, not process_type: Alma reports TRANSIT for at least
+  # three unrelated situations, where a request exists only because somebody
+  # asked for the item.
+  #
+  # No pickup location test here. Anything bound elsewhere was taken by the cart
+  # above, so what reaches this one is a hold collected at this library or one
+  # whose pickup location Alma did not report -- and keeping an unplaceable hold
+  # where staff see it beats reshelving a book somebody is waiting for.
+  #
+  # Request fields cost one extra Alma call per returned item, made only when a
+  # rule mentions one.
+  - binId: reserved
+    color: red
+    label:
+      de: 'Roter Wagen'
+      en: 'Red cart'
+    message:
+      de: 'Bitte legen Sie den Band auf den roten Wagen.'
+      en: 'Please place this item on the red cart.'
+    # No complete_transit_at, deliberately: this desk has a hold shelf, so the
+    # return scan-in has already placed the item on it and notified the
+    # requester. The red cart is only where the book waits until staff carry it
+    # across; Alma already considers it shelved.
+    #
+    # Set complete_transit_at only at a desk with NO hold shelf, naming the desk
+    # that has one. There a returned hold sits in transit until someone repeats
+    # the scan by hand.
     when:
       any:
-        - field: process_type
-          in: ['LOST_LOAN', 'LOST_AND_PAID', 'CLAIMED_RETURNED_LOAN', 'MISSING']
-      all:
-        - field: library_code
-          in: ['TWIST', 'OTHER']
-        - field: process_type
-          in: ['HOLD_SHELF']
-  - binId: warning
+        - field: has_request
+          equals: true
+
+  # 3. Not a hold and it does not live here: it goes home. List this terminal's
+  # own library, so anything else belongs elsewhere.
+  #
+  # shelving_library_code, not library_code: a book lent to a Semesterapparat
+  # here keeps another library's code in library_code while actually living at
+  # this one, and matching on ownership would send it off the shelf it is on.
+  #
+  # These books leave the site, so they are deliberately left in transit -- the
+  # transit record is what says the book is on the road. Never settle it here.
+  - binId: other_location
+    color: grey
+    label:
+      de: 'Grauer Wagen'
+      en: 'Grey cart'
+    message:
+      de: 'Bitte legen Sie den Band auf den grauen Wagen.'
+      en: 'Please place this item on the grey cart.'
+    when:
+      any:
+        - field: shelving_library_code
+          not_in: ['MAIN_LIBRARY']
+
+  # 4. Everything else is shelved locally. This is the required catch-all.
+  - binId: main
     color: yellow
     label:
-      de: 'Gelbe Regal'
-      en: 'Yellow shelf'
+      de: 'Gelber Wagen'
+      en: 'Yellow cart'
     message:
-      de: 'Bitte legen Sie das Medium in das blaue Regal.'
-      en: 'Please place this item in the blue shelf.'
-    sort_order: 1
-    when:
-      any:
-        - field: process_type
-          in: ['HOLD_SHELF', 'LOST_AND_PAID', 'CLAIMED_RETURNED_LOAN', 'MISSING']
-        - field: destination_library_code
-          exists: true
-        - field: has_request
-          equal: true
-        - field: process_type
-          not_in: ['LOST_LOAN', 'MISSING']
-  - binId: main
-    color: blue
-    label:
-      de: 'Blaue Regal'
-      en: 'Blue shelf'
-    message:
-      de: 'Bitte legen Sie das Medium in das blaue Regal.'
-      en: 'Please place this item in the blue shelf.'
-    sort_order: 1
+      de: 'Bitte legen Sie den Band auf den gelben Wagen.'
+      en: 'Please place this item on the yellow cart.'
     when:
       always: true
 
@@ -100,30 +175,44 @@ checkout:
   # Optional image for the checkout list empty state; supports /absolute/path or https:// URL
   #no_media_found_image: '/branding/place_book.png'
   profiles:
-    # The profile id is used via the checkout_profile_id URL param on checkout pages
-    # Each return directive must at least define one return directive with binId: main,
-    # and to link the bin just add the bin if to the list of return_directives
-    # Untouched configuration of the bin will default to the logic defined in global return directives
+    # The profile id is used via the checkout_profile_id URL param on checkout pages.
+    #
+    # return_directives selects which global carts physically stand at this desk,
+    # in evaluation order, and may override individual fields of each. A bare
+    # "- binId: main" inherits the global definition wholesale. The list must
+    # still end with a catch-all.
+    #
+    # Omitting it entirely uses the global set unchanged, which is the common
+    # case.
     - id: terminal1
       type: alma
       library: MAIN_LIBRARY
       circulation_desk: SELF-CHECKOUT-CIRC1
+      # All four carts, with only the wording of the local cart changed.
       return_directives:
+        - binId: requested_elsewhere
+        - binId: reserved
+        - binId: other_location
         - binId: main
-        - binId: warning
-        - binId: fatal
-          label:
-            de: 'Blaue Regal'
-            en: 'Blue shelf'
           message:
-            de: 'Bitte legen Sie das Medium in das blaue Regal.'
-            en: 'Please place this item in the blue shelf.'
+            de: 'Bitte legen Sie den Band auf den gelben Wagen neben dem Eingang.'
+            en: 'Please place this item on the yellow cart next to the entrance.'
     - id: terminal2
       type: alma
       library: MAIN_LIBRARY
       circulation_desk: SELF-CHECKOUT-CIRC2
+      # This desk has only one cart, so everything returned here goes on it.
       return_directives:
         - binId: main
+    # A terminal in a library that has not adopted return carts. An explicitly
+    # empty list opts this desk out: no badge is shown and returns keep working.
+    # This is how you run carts in one library without giving them to every
+    # other terminal in the deployment.
+    - id: terminal3
+      type: alma
+      library: BRANCH_LIBRARY
+      circulation_desk: SELF-CHECKOUT-CIRC1
+      return_directives: []
 
 # Security gate display configuration
 gate:

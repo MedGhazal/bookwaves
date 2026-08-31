@@ -6,8 +6,7 @@ export const LmsReturnDirectiveSchema = v.object({
 	binId: v.string(),
 	label: v.string(),
 	color: v.optional(v.string()),
-	message: v.optional(v.string()),
-	sortOrder: v.optional(v.number())
+	message: v.optional(v.string())
 });
 
 export const MediaItemSchema = v.object({
@@ -24,18 +23,27 @@ export const MediaItemSchema = v.object({
 	process_type: v.optional(v.string()),
 	library: v.optional(v.string()),
 	library_code: v.optional(v.string()),
-	destination_library_code: v.optional(v.string()),
 	location: v.optional(v.string()),
 	location_code: v.optional(v.string()),
-	destination_location_code: v.optional(v.string()),
-	circulation_desk: v.optional(v.string()),
-	circulation_desk_code: v.optional(v.string()),
-	has_request: v.optional(v.boolean()),
-	request_type: v.optional(v.string()),
+	/**
+	 * Where the item belongs right now, which is its temporary library and
+	 * location while it is on one and its permanent ones otherwise. A book lent
+	 * to a Semesterapparat keeps its permanent codes above while living
+	 * somewhere else entirely, so these are what routing should ask.
+	 */
+	shelving_library_code: v.optional(v.string()),
+	shelving_location_code: v.optional(v.string()),
 	shelfmark: v.optional(v.string()),
 	loanDate: v.optional(v.string()),
 	dueDate: v.optional(v.string()),
 	returnLibrary: v.optional(v.string()),
+	/** Whether the library management system holds an active request for this item. */
+	has_request: v.optional(v.boolean()),
+	/**
+	 * The library code a request for this item is to be collected at. Separates a
+	 * hold collected here from one that still has to travel to another branch.
+	 */
+	pickup_location_library: v.optional(v.string()),
 	returnDirective: v.optional(LmsReturnDirectiveSchema)
 });
 
@@ -130,7 +138,7 @@ export interface LibraryManagementSystem {
 	 * @param barcode The RFID tag identifier
 	 * @returns MediaItem or null if not found
 	 */
-	getItem(barcode: string): Promise<MediaItem | null>;
+	getItem(barcode: string, context?: CheckoutContext): Promise<MediaItem | null>;
 	/**
 	 * Get the fees for a user
 	 * @param userId The user identifier

@@ -85,7 +85,7 @@
 
 	const handleMediaLookup = async () => {
 		await run('media', async () => {
-			mediaResult = await lms.getItem(mediaId);
+			mediaResult = await lms.getItem({ barcode: mediaId });
 		});
 	};
 

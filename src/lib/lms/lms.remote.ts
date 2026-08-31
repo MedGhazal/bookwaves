@@ -87,8 +87,6 @@ export const logoutUser = command(async () => {
 	return lms.logoutUser();
 });
 
-export const getItem = query(v.string(), async (barcode) => lms.getItem(barcode));
-
 const CheckoutContextSchema = v.object({
 	checkoutProfileId: v.optional(v.string()),
 	library: v.optional(v.string()),
@@ -99,6 +97,12 @@ const CheckoutCommandSchema = v.object({
 	barcode: v.string(),
 	context: v.optional(CheckoutContextSchema)
 });
+
+// The checkout context is optional: lookups outside a checkout terminal (the
+// gate and reader pages) simply get no return directive.
+export const getItem = query(CheckoutCommandSchema, async ({ barcode, context }) =>
+	lms.getItem(barcode, context)
+);
 
 export const borrowItem = command(
 	CheckoutCommandSchema,

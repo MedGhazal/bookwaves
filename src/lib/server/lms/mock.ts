@@ -309,8 +309,7 @@ function getMockReturnDirective(item: MediaItem): LmsReturnDirective {
 			binId: 'blue',
 			label: 'Blue shelf',
 			color: 'blue',
-			message: 'Place this item in the blue sorting shelf',
-			sortOrder: 2
+			message: 'Place this item in the blue sorting shelf'
 		};
 	}
 
@@ -319,8 +318,7 @@ function getMockReturnDirective(item: MediaItem): LmsReturnDirective {
 			binId: 'red',
 			label: 'Red shelf',
 			color: 'red',
-			message: 'Place this item in the red sorting shelf',
-			sortOrder: 1
+			message: 'Place this item in the red sorting shelf'
 		};
 	}
 
@@ -328,8 +326,7 @@ function getMockReturnDirective(item: MediaItem): LmsReturnDirective {
 		binId: 'yellow',
 		label: 'Yellow shelf',
 		color: 'yellow',
-		message: 'Place this item in the yellow sorting shelf',
-		sortOrder: 3
+		message: 'Place this item in the yellow sorting shelf'
 	};
 }
 

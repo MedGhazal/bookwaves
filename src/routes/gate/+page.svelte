@@ -167,7 +167,7 @@
 							animate:flip={{ duration: 200 }}
 						>
 							<div class="p-6 hover:bg-base-200 {item.secured ? 'bg-error/10' : ''}">
-								<RFIDItem {item} highlight={item.secured} showBadges={false} />
+								<RFIDItem {item} highlight={item.secured} showBadges={false} showBin={false} />
 							</div>
 						</li>
 					{:else}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { RFIDData } from '$lib/reader/interface';
-	import type { MediaItem } from '$lib/lms/lms';
+	import type { CheckoutContext, MediaItem } from '$lib/lms/lms';
 	import { getItem } from '$lib/lms/lms.remote';
 	import { onMount } from 'svelte';
 	import { Lock, LockOpen, Tag } from '@lucide/svelte';
@@ -16,7 +16,8 @@
 		showBin = true,
 		showSecurity = true,
 		showLibraryLocation = true,
-		showPublicationLine = true
+		showPublicationLine = true,
+		checkoutContext
 	}: {
 		item: RFIDData;
 		highlight?: boolean;
@@ -27,6 +28,8 @@
 		showSecurity?: boolean;
 		showLibraryLocation?: boolean;
 		showPublicationLine?: boolean;
+		/** Terminal the lookup happens at; required for a return directive to resolve. */
+		checkoutContext?: CheckoutContext;
 	} = $props();
 
 	let mediaItem = $state<MediaItem | null>(null);
@@ -41,7 +44,10 @@
 		loading = true;
 		fetchError = null;
 		try {
-			mediaItem = await getItem(item.mediaId || item.id);
+			mediaItem = await getItem({
+				barcode: item.mediaId || item.id,
+				context: checkoutContext
+			});
 			if (onMediaItemLoaded) {
 				onMediaItemLoaded(mediaItem);
 			}
@@ -210,14 +216,14 @@
 						</div>
 					{/if}
 				</div>
-				{#if mediaItem.shelfmark || (showBadges && showBin && mediaItem.returnDirective)}
+				{#if mediaItem.shelfmark || (showBin && mediaItem.returnDirective)}
 					<div class="flex min-w-40 items-center justify-center gap-3 text-center">
 						{#if mediaItem.shelfmark}
 							<span class="text-lg font-semibold text-base-content/70">
 								{mediaItem.shelfmark}
 							</span>
 						{/if}
-						{#if showBadges && showBin && mediaItem.returnDirective}
+						{#if showBin && mediaItem.returnDirective}
 							<span
 								class="badge badge-lg {getDirectiveBadgeClass(
 									mediaItem.returnDirective.color

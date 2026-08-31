@@ -47,6 +47,10 @@
 	);
 	const checkoutProfile = $derived(data.checkoutProfile ?? null);
 	const checkoutProfileRequired = $derived(lmsType.toLowerCase() === 'alma');
+	// The terminal the item is being returned at; return directives resolve from it.
+	const checkoutContext = $derived(
+		checkoutProfileId && checkoutProfileRequired ? { checkoutProfileId } : undefined
+	);
 	let readerError: string | null = $state(null);
 	const readerWarning = $derived(
 		readerError ?? (missingReaderParams ? m.reader_configuration_missing_message() : null)
@@ -190,11 +194,9 @@
 
 		let result: LmsActionResult | undefined;
 		try {
-			const context =
-				checkoutProfileId && checkoutProfileRequired ? { checkoutProfileId } : undefined;
 			result = await returnItem({
 				barcode: processed.rfidData.mediaId || processed.rfidData.id,
-				context
+				context: checkoutContext
 			});
 		} catch (error) {
 			clientLogger.error({ err: error }, 'Return item call failed');
@@ -524,6 +526,8 @@
 										<RFIDItem
 											item={item.rfidData}
 											showBadges={false}
+											showBin={false}
+											{checkoutContext}
 											bind:this={item.component}
 											onMediaItemLoaded={(mediaItem) => handleMediaItemLoaded(item, mediaItem)}
 										/>

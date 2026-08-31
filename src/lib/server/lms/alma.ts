@@ -12,32 +12,14 @@ import * as v from 'valibot';
 import { logger } from '$lib/server/logger';
 import { getLocale } from '$lib/paraglide/runtime';
 import { buildProviderCoverUrl, type CoverImageProvider } from './cover-image-provider';
+import type {
+	CompleteTransitAt,
+	ReturnCondition,
+	ReturnDirective,
+	ReturnRule
+} from '$lib/server/config';
 
 const DEFAULT_API_URL = 'https://api-eu.hosted.exlibrisgroup.com/almaws/v1/';
-
-type ReturnRule = {
-	field: string;
-	in?: string[];
-	not_in?: string[];
-	equals?: string | boolean | number;
-	exists?: boolean;
-};
-
-type ReturnCondition = {
-	any?: ReturnRule[];
-	all?: ReturnRule[];
-	always?: boolean;
-};
-
-type ReturnDirective = {
-	binId: string;
-	priority: number;
-	message: Record<string, string>;
-	label: Record<string, string>;
-	color: string;
-	sort_order: number;
-	when?: ReturnCondition;
-};
 
 type CheckoutProfile = {
 	id: string;
@@ -46,6 +28,9 @@ type CheckoutProfile = {
 	type?: string;
 	return_directives?: ReturnDirective[];
 };
+
+/** The library and circulation desk a terminal is bound to, from its checkout profile. */
+type CheckoutDesk = { library: string; circDesk: string };
 
 type KnownItemIdentity = {
 	mmsId: string;
@@ -89,7 +74,23 @@ export const ItemSchema = v.object({
 		publisher_const: v.optional(v.string())
 	}),
 	holding_data: v.object({
-		holding_id: v.string()
+		holding_id: v.string(),
+		// An item on loan to a Semesterapparat or similar keeps its permanent
+		// library and location in item_data while actually living here. Routing on
+		// item_data alone would send such a book home to a shelf it has left.
+		in_temp_location: v.optional(v.boolean()),
+		temp_library: v.optional(
+			v.object({
+				value: v.optional(v.string()),
+				desc: v.optional(v.string())
+			})
+		),
+		temp_location: v.optional(
+			v.object({
+				value: v.optional(v.string()),
+				desc: v.optional(v.string())
+			})
+		)
 	}),
 	item_data: v.object({
 		pid: v.string(),
@@ -130,6 +131,43 @@ const LocationCodeSchema = v.object({
 	value: v.string(),
 	name: v.optional(v.string())
 });
+
+/**
+ * The item requests endpoint, read only for what the return carts need.
+ *
+ * Not every record means a patron wants the book: Alma raises its own internal
+ * requests from the same endpoint, and a return that transits for reshelving
+ * produces a `WORK_ORDER`. Counting those puts ordinary books on the reserved
+ * cart.
+ */
+const ItemRequestsSchema = v.object({
+	total_record_count: v.optional(v.number()),
+	user_request: v.optional(
+		v.array(
+			v.object({
+				request_type: v.optional(v.string()),
+				request_sub_type: v.optional(
+					v.object({
+						value: v.optional(v.string()),
+						desc: v.optional(v.string())
+					})
+				),
+				request_status: v.optional(v.string()),
+				pickup_location_library: v.optional(v.string())
+			})
+		)
+	)
+});
+
+/**
+ * Alma request types raised by the system rather than by a person, excluded
+ * from every return cart decision.
+ *
+ * A deny-list on purpose: an unknown internal type strands a book on the
+ * reserved cart where staff correct it, where an allow-list missing a patron
+ * type would reshelve a book somebody is waiting for, and nobody would find out.
+ */
+const INTERNAL_REQUEST_TYPES = new Set(['WORK_ORDER', 'MOVE']);
 
 const ItemLoanSchema = v.object({
 	circ_desk: ValueDescLinkSchema,
@@ -251,6 +289,27 @@ function extractIsbns(value: string | undefined): string[] {
 	return isbns;
 }
 
+/** Rule fields that can only be answered by the item requests endpoint. */
+const REQUEST_RULE_FIELDS = new Set<ReturnRule['field']>([
+	'has_request',
+	'pickup_location_library'
+]);
+
+/**
+ * What the item requests endpoint tells the return carts. Both fields stay
+ * unset when the call fails, so a network problem never reads as a definite
+ * "nobody wants this book".
+ */
+interface RequestFacts {
+	hasRequest?: boolean;
+	pickupLocationLibrary?: string;
+}
+
+/** Directives are stored and looked up under one canonical desk key. */
+function returnDirectiveKey(library: string, circDesk: string): string {
+	return `${library.trim()}:${circDesk.trim()}`.toLowerCase();
+}
+
 export class AlmaLMS implements LibraryManagementSystem {
 	private apiUrl: string;
 	private currentUserId?: string;
@@ -263,17 +322,19 @@ export class AlmaLMS implements LibraryManagementSystem {
 	private returnDirectives = new Map<string, Array<ReturnDirective>>();
 
 	private matchesRule(rule: ReturnRule, item: MediaItem): boolean {
-		const value = item[rule.field as keyof MediaItem];
+		const value = item[rule.field];
+		// A field Alma did not return and a field it returned as null are the same
+		// thing to a rule: the item carries no value to match against.
+		const absent = value === undefined || value === null;
+
 		if (rule.exists !== undefined) {
-			return rule.exists
-				? value !== undefined && value !== null
-				: value === undefined || value === null;
+			return rule.exists ? !absent : absent;
 		}
 		if (rule.in !== undefined) {
-			return value !== undefined && rule.in.includes(String(value));
+			return !absent && rule.in.includes(String(value));
 		}
 		if (rule.not_in !== undefined) {
-			return value === undefined || !rule.not_in.includes(String(value));
+			return absent || !rule.not_in.includes(String(value));
 		}
 		if (rule.equals !== undefined) {
 			return value === rule.equals;
@@ -281,6 +342,10 @@ export class AlmaLMS implements LibraryManagementSystem {
 		return false;
 	}
 
+	/**
+	 * `any` and `all` are ANDed when a condition declares both, so a directive can
+	 * match a broad category and then narrow it. `always` short-circuits.
+	 */
 	private matches(condition: ReturnCondition | undefined, item: MediaItem): boolean {
 		if (!condition) {
 			return false;
@@ -288,54 +353,256 @@ export class AlmaLMS implements LibraryManagementSystem {
 		if (condition.always === true) {
 			return true;
 		}
-		if (condition.any) {
-			return condition.any.some((child) => this.matchesRule(child, item));
+		if (!condition.any && !condition.all) {
+			return false;
 		}
-		if (condition.all) {
-			return condition.all.every((child) => this.matchesRule(child, item));
+		if (condition.any && !condition.any.some((child) => this.matchesRule(child, item))) {
+			return false;
 		}
-		return false;
+		if (condition.all && !condition.all.every((child) => this.matchesRule(child, item))) {
+			return false;
+		}
+		return true;
 	}
 	public pinLogin?: boolean;
 
-	private buildReturnDirective(item: MediaItem): LmsReturnDirective | undefined {
-		const library = item.library_code?.toLowerCase() ?? '';
-		if (library === undefined || library === '') {
-			return {
-				binId: '',
-				label: '',
-				message: '',
-				color: '',
-				sortOrder: 1
-			};
-		}
-		// const circulation_desk = "DEFAULT_CIRC_DESK".toLowerCase();
-		// const circulation_desk = item.location?.toLowerCase() ?? '';
-		const circulation_desk =
-			item.circulation_desk_code?.toLowerCase() ?? 'DEFAULT_CIRC_DESK'.toLowerCase();
-		const key = `${library.trim()}:${circulation_desk.trim()}`.toLowerCase();
-		const returnDirectives = this.returnDirectives.get(key);
-		if (returnDirectives == undefined) {
-			throw new Error(
-				`Return directives not defined for the library ${library} and ${circulation_desk}`
+	/**
+	 * Return carts belong to the desk, not to the item: which carts physically
+	 * stand at a terminal is a property of that terminal, so directives are looked
+	 * up by the checkout profile's library and circulation desk. Without a desk
+	 * there is no directive to give.
+	 */
+	private resolveReturnDirectives(desk?: CheckoutDesk): ReturnDirective[] | undefined {
+		if (!desk) return undefined;
+
+		const key = returnDirectiveKey(desk.library, desk.circDesk);
+		const directives = this.returnDirectives.get(key);
+		if (!directives) {
+			logger.warn(
+				{ library: desk.library, circDesk: desk.circDesk },
+				'No return directives configured for this checkout desk'
 			);
+			return undefined;
 		}
-		logger.debug({ returnDirectives }, `Return directives of ${key}`);
-		for (const directive of returnDirectives.sort((a, b) => b.priority - a.priority)) {
-			if (this.matches(directive.when, item)) {
-				logger.debug({ directive }, `Matched directive of ${key}`);
-				const locale = getLocale();
-				return {
-					binId: directive.binId,
-					label: directive.label[locale] ?? directive.label.en,
-					message: directive.message[locale] ?? directive.message.en,
-					color: directive.color,
-					sortOrder: directive.sort_order
-				};
-			}
-		}
+		return directives;
 	}
 
+	private buildReturnDirective(
+		item: MediaItem,
+		desk?: CheckoutDesk
+	): LmsReturnDirective | undefined {
+		const directives = this.resolveReturnDirectives(desk);
+		if (!directives) return undefined;
+
+		const locale = getLocale();
+		// Configuration order is the precedence: the first matching directive wins.
+		for (const directive of directives) {
+			if (!this.matches(directive.when, item)) continue;
+
+			// Configuration validation guarantees at least one locale per directive,
+			// so the fallback only picks a different language, never nothing.
+			const label = directive.label[locale] ?? Object.values(directive.label)[0];
+			if (!label) {
+				logger.error({ binId: directive.binId }, 'Return directive has no usable label');
+				continue;
+			}
+
+			logger.debug({ binId: directive.binId, barcode: item.barcode }, 'Matched return directive');
+			return {
+				binId: directive.binId,
+				label,
+				message: directive.message[locale] ?? Object.values(directive.message)[0],
+				color: directive.color
+			};
+		}
+
+		logger.debug({ barcode: item.barcode }, 'No return directive matched item');
+		return undefined;
+	}
+
+	/**
+	 * Whether any cart at this desk routes on request data. The requests endpoint
+	 * is a second Alma call on a path where the user is standing at the kiosk, so
+	 * a deployment whose rules never mention it must not pay for it.
+	 */
+	private directivesNeedRequestData(desk?: CheckoutDesk): boolean {
+		const directives = this.resolveReturnDirectives(desk);
+		if (!directives) return false;
+
+		const usesRequestField = (rules?: ReturnRule[]) =>
+			rules?.some((rule) => REQUEST_RULE_FIELDS.has(rule.field)) ?? false;
+
+		return directives.some(
+			(directive) => usesRequestField(directive.when?.any) || usesRequestField(directive.when?.all)
+		);
+	}
+
+	/**
+	 * Whether the library management system holds a request for this item, and
+	 * where it is to be collected -- a locally owned item requested at another
+	 * branch still has to travel.
+	 *
+	 * A better signal for the reserved cart than `process_type`, which Alma
+	 * reports as `TRANSIT` for at least three unrelated situations. A request
+	 * exists only because a patron asked for the item.
+	 *
+	 * Fields are left unset when the call fails, so a network problem never reads
+	 * as "nobody wants this book".
+	 */
+	private async fetchRequestFacts(ids: {
+		mmsId: string;
+		holdingId: string;
+		itemId: string;
+	}): Promise<RequestFacts> {
+		let res: Response;
+		try {
+			res = await fetch(
+				`${this.apiUrl}bibs/${encodeURIComponent(ids.mmsId)}` +
+					`/holdings/${encodeURIComponent(ids.holdingId)}` +
+					`/items/${encodeURIComponent(ids.itemId)}/requests?` +
+					this.params.toString()
+			);
+		} catch (error) {
+			logger.warn({ err: error }, 'Network error fetching item requests; routing without them');
+			return {};
+		}
+
+		if (!res.ok) {
+			logger.warn({ status: res.status }, 'Failed to fetch item requests; routing without them');
+			return {};
+		}
+
+		let parsedBody: unknown;
+		try {
+			parsedBody = await res.json();
+		} catch (error) {
+			logger.warn({ err: error }, 'Failed to parse item requests; routing without them');
+			return {};
+		}
+
+		logger.trace({ requests: parsedBody }, 'Raw item requests response');
+		const parsed = v.safeParse(ItemRequestsSchema, parsedBody);
+		if (!parsed.success) {
+			logger.warn(
+				{ issues: parsed.issues },
+				'Unexpected item requests shape; routing without them'
+			);
+			return {};
+		}
+
+		const requests = parsed.output.user_request ?? [];
+		const patronRequests = requests.filter(
+			(request) => !INTERNAL_REQUEST_TYPES.has(request.request_type ?? '')
+		);
+
+		// A count with no records to inspect: the types cannot be checked, so it is
+		// treated as a patron's. Leaving a wanted book on the reserved cart costs
+		// staff a second look; reshelving it costs the patron the book.
+		const opaqueCount = requests.length === 0 ? (parsed.output.total_record_count ?? 0) : 0;
+
+		// Alma returns requests in queue order and does not act on the second until
+		// the first is filled. Patron requests only -- an internal work order's
+		// pickup location is a reshelving destination, not a collection point.
+		const pickupLocationLibrary = patronRequests.find(
+			(request) => request.pickup_location_library
+		)?.pickup_location_library;
+
+		// Logged so an unclassified request type shows up here, not silently on a cart.
+		logger.debug(
+			{
+				count: patronRequests.length,
+				ignoredInternal: requests.length - patronRequests.length,
+				opaqueCount,
+				types: requests.map(
+					(request) => `${request.request_type}/${request.request_sub_type?.value ?? '-'}`
+				),
+				statuses: requests.map((request) => request.request_status),
+				pickupLocationLibrary
+			},
+			'Item requests fetched'
+		);
+		return { hasRequest: patronRequests.length + opaqueCount > 0, pickupLocationLibrary };
+	}
+	private findDirectiveConfig(binId: string, desk?: CheckoutDesk): ReturnDirective | undefined {
+		return this.resolveReturnDirectives(desk)?.find((directive) => directive.binId === binId);
+	}
+
+	/**
+	 * Scans the item in a second time at the desk that owns the hold shelf. A
+	 * self-service station has none of its own, so without this the item waits in
+	 * transit for a staff member to repeat the scan by hand.
+	 *
+	 * Failures are logged and swallowed: the return has already succeeded and the
+	 * item is off the user's card, so failing it now over a follow-up call would
+	 * be worse than an item left in transit.
+	 */
+	private async completeTransit(
+		ids: { mmsId: string; holdingId: string; itemId: string },
+		destination: CompleteTransitAt,
+		barcode: string
+	): Promise<void> {
+		let res: Response;
+		try {
+			res = await fetch(
+				`${this.apiUrl}bibs/${encodeURIComponent(ids.mmsId)}` +
+					`/holdings/${encodeURIComponent(ids.holdingId)}` +
+					`/items/${encodeURIComponent(ids.itemId)}?` +
+					`op=scan&library=${encodeURIComponent(destination.library)}` +
+					`&circ_desk=${encodeURIComponent(destination.circulation_desk)}&` +
+					this.params.toString(),
+				{ method: 'POST' }
+			);
+		} catch (error) {
+			logger.warn(
+				{ err: error, barcode, destination },
+				'Network error completing transit; item stays in transit'
+			);
+			return;
+		}
+
+		if (!res.ok) {
+			logger.warn(
+				{ barcode, status: res.status, destination },
+				'Follow-up scan-in was rejected; item stays in transit'
+			);
+			return;
+		}
+
+		logger.info({ barcode, destination }, 'Completed transit with a follow-up scan-in');
+	}
+
+	/**
+	 * Alma reports TRANSIT for several unrelated reasons and only one is a fault:
+	 * an item that belongs on this library's shelves being routed away because the
+	 * desk is missing that shelving location, or has reshelving switched off for
+	 * it. Neither is visible at startup, so it is reported when it shows up.
+	 *
+	 * The other reasons are excluded below rather than reported, so the warning
+	 * stays a list of locations worth fixing.
+	 */
+	private warnOnUnexpectedTransit(item: MediaItem, desk: CheckoutDesk, binId: string): void {
+		if (item.process_type !== 'TRANSIT') return;
+		// The shelving library rather than the owning one: a book living here on a
+		// Semesterapparat belongs to this desk even though another library owns it,
+		// and those are exactly the items a missing shelving location strands.
+		if (!item.shelving_library_code || item.shelving_library_code !== desk.library) return;
+		// A hold collected at another library transits too, and rightly -- it is
+		// travelling to the reader who asked for it. Absent means no patron request
+		// reported one, which leaves the reshelving case and a hold collected right
+		// here, which should have gone to the hold shelf instead.
+		if (item.pickup_location_library && item.pickup_location_library !== desk.library) return;
+
+		logger.warn(
+			{
+				barcode: item.barcode,
+				binId,
+				library: desk.library,
+				circDesk: desk.circDesk,
+				locationCode: item.shelving_location_code
+			},
+			'Item owned by this library went into transit on return; check the desk has this location attached with Reshelve enabled'
+		);
+	}
 	private getCachedItem(barcode: string) {
 		const cached = this.itemCache.get(barcode);
 		if (cached) {
@@ -359,9 +626,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 		return `https://picsum.dev/120/180?seed=${encodeURIComponent(seed)}`;
 	}
 
-	private resolveCheckoutDetails(
-		context?: CheckoutContext
-	): { library: string; circDesk: string } | LmsActionResult {
+	private resolveCheckoutDetails(context?: CheckoutContext): CheckoutDesk | LmsActionResult {
 		const libraryFromContext = context?.library?.trim();
 		const circDeskFromContext = context?.circDesk?.trim();
 
@@ -453,7 +718,23 @@ export class AlmaLMS implements LibraryManagementSystem {
 		};
 	}
 
-	private mapLoanToMediaItem(loan: v.InferOutput<typeof ItemLoanSchema>): MediaItem {
+	/**
+	 * Resolves a desk for directive lookup only: an unusable context here means
+	 * "no shelf instruction" rather than an error.
+	 *
+	 * Defers to `resolveCheckoutDetails` even without a context, so a
+	 * single-profile deployment resolves the same desk as the borrow and return
+	 * paths. Otherwise a terminal shows a directive on return but none in Buchinfo.
+	 */
+	private resolveDeskForDirective(context?: CheckoutContext): CheckoutDesk | undefined {
+		const checkout = this.resolveCheckoutDetails(context);
+		return 'library' in checkout ? checkout : undefined;
+	}
+
+	private mapLoanToMediaItem(
+		loan: v.InferOutput<typeof ItemLoanSchema>,
+		desk?: CheckoutDesk
+	): MediaItem {
 		const cachedIdentity = this.getCachedItem(loan.item_barcode);
 		const isbns = cachedIdentity?.isbns;
 		this.setCachedItem(loan.item_barcode, {
@@ -481,7 +762,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 			status: 'On loan',
 			cover: this.buildCoverUrl(loan.title, isbns)
 		};
-		mediaItem.returnDirective = this.buildReturnDirective(mediaItem);
+		mediaItem.returnDirective = this.buildReturnDirective(mediaItem, desk);
 		return mediaItem;
 	}
 
@@ -504,7 +785,9 @@ export class AlmaLMS implements LibraryManagementSystem {
 
 	private mapItemToMediaItem(
 		itemData: v.InferOutput<typeof ItemSchema>,
-		barcode: string
+		barcode: string,
+		desk?: CheckoutDesk,
+		requests: RequestFacts = {}
 	): MediaItem {
 		const isbns = extractIsbns(itemData.bib_data.isbn);
 		const mediaItem: MediaItem = {
@@ -515,16 +798,23 @@ export class AlmaLMS implements LibraryManagementSystem {
 			place: itemData.bib_data.place_of_publication,
 			date: itemData.bib_data.date_of_publication,
 			publisher: itemData.bib_data.publisher_const,
+			process_type: itemData.item_data.process_type?.value,
 			library: itemData.item_data.library.desc,
 			library_code: itemData.item_data.library.value,
 			location: itemData.item_data.location.desc,
 			location_code: itemData.item_data.location.value,
+			shelving_library_code:
+				itemData.holding_data.temp_library?.value || itemData.item_data.library.value,
+			shelving_location_code:
+				itemData.holding_data.temp_location?.value || itemData.item_data.location.value,
 			shelfmark: itemData.item_data.alternative_call_number,
 			status:
 				itemData.item_data.base_status.desc + ': ' + (itemData.item_data.process_type?.desc ?? '-'),
+			has_request: requests.hasRequest,
+			pickup_location_library: requests.pickupLocationLibrary,
 			cover: this.buildCoverUrl(itemData.bib_data.isbn ?? itemData.bib_data.title, isbns)
 		};
-		mediaItem.returnDirective = this.buildReturnDirective(mediaItem);
+		mediaItem.returnDirective = this.buildReturnDirective(mediaItem, desk);
 		return mediaItem;
 	}
 
@@ -622,15 +912,18 @@ export class AlmaLMS implements LibraryManagementSystem {
 		this.apiKey = apiKey;
 		this.returnDirectives = new Map();
 		for (const profile of checkoutProfiles) {
-			const key = `${profile.library.trim()}:${profile.circulation_desk.trim()}`.toLowerCase();
-			logger.trace({ key }, 'Map key to return directives');
+			const key = returnDirectiveKey(profile.library, profile.circulation_desk);
 			const returnDirectives = profile.return_directives;
-			logger.trace({ returnDirectives }, `Return Directives of key ${key}`);
+			// A desk without directives is a configuration gap, not a fatal error: it
+			// yields no shelf instruction while returns keep working.
 			if (returnDirectives === undefined) {
-				throw new Error(
-					`Return directives not configured for library ${profile.library} and circulation_desk ${profile.circulation_desk}`
+				logger.warn(
+					{ library: profile.library, circDesk: profile.circulation_desk },
+					'No return directives configured for checkout profile'
 				);
+				continue;
 			}
+			logger.trace({ key, returnDirectives }, 'Mapped return directives to checkout desk');
 			this.returnDirectives.set(key, returnDirectives);
 		}
 		this.pinLogin = pinLogin;
@@ -986,7 +1279,7 @@ export class AlmaLMS implements LibraryManagementSystem {
 		return true;
 	}
 
-	async getItem(barcode: string): Promise<MediaItem | null> {
+	async getItem(barcode: string, context?: CheckoutContext): Promise<MediaItem | null> {
 		// Always fetch fresh data (do not return cached value here)
 		let res: Response;
 		try {
@@ -1009,7 +1302,16 @@ export class AlmaLMS implements LibraryManagementSystem {
 		if (!parsedItemData.success) {
 			throw new Error('Invalid item data format');
 		}
-		const result = this.mapItemToMediaItem(parsedItemData.output, barcode);
+		const ids = {
+			mmsId: parsedItemData.output.bib_data.mms_id,
+			holdingId: parsedItemData.output.holding_data.holding_id,
+			itemId: parsedItemData.output.item_data.pid
+		};
+		// Buchinfo has to name the same cart the return will, so it needs the same
+		// inputs -- including the requests call when a rule routes on one.
+		const desk = this.resolveDeskForDirective(context);
+		const requests = this.directivesNeedRequestData(desk) ? await this.fetchRequestFacts(ids) : {};
+		const result = this.mapItemToMediaItem(parsedItemData.output, barcode, desk, requests);
 		this.setCachedItem(barcode, {
 			mmsId: parsedItemData.output.bib_data.mms_id,
 			holdingId: parsedItemData.output.holding_data.holding_id,
@@ -1157,7 +1459,17 @@ export class AlmaLMS implements LibraryManagementSystem {
 			return { ok: false, reasonKey: 'error_invalid_return_data' };
 		}
 
-		const mediaItem = this.mapItemToMediaItem(parsedItemData.output, barcode);
+		const returnIds = {
+			mmsId: parsedItemData.output.bib_data.mms_id,
+			holdingId: parsedItemData.output.holding_data.holding_id,
+			itemId: parsedItemData.output.item_data.pid
+		};
+		// After the scan-in, because that is when the request state the cart routes
+		// on is the state the item is actually in.
+		const requests = this.directivesNeedRequestData(checkout)
+			? await this.fetchRequestFacts(returnIds)
+			: {};
+		const mediaItem = this.mapItemToMediaItem(parsedItemData.output, barcode, checkout, requests);
 		this.setCachedItem(barcode, {
 			mmsId: parsedItemData.output.bib_data.mms_id,
 			holdingId: parsedItemData.output.holding_data.holding_id,
@@ -1165,11 +1477,24 @@ export class AlmaLMS implements LibraryManagementSystem {
 			isbns: extractIsbns(parsedItemData.output.bib_data.isbn)
 		});
 
+		// The cart is only known once Alma has answered, so resolving a transit the
+		// cart does not want is necessarily a second call rather than a parameter
+		// on the first one.
+		const matchedBinId = mediaItem.returnDirective?.binId;
+		if (matchedBinId) {
+			const destination = this.findDirectiveConfig(matchedBinId, checkout)?.complete_transit_at;
+			if (destination) {
+				await this.completeTransit(returnIds, destination, barcode);
+			} else {
+				this.warnOnUnexpectedTransit(mediaItem, checkout, matchedBinId);
+			}
+		}
+
 		return {
 			ok: true,
 			item: mediaItem,
 			messageKey: 'successfully_returned_message',
-			directive: this.buildReturnDirective(mediaItem)
+			directive: mediaItem.returnDirective
 		};
 	}
 
