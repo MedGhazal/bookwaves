@@ -314,10 +314,11 @@
 											</div>
 										</div>
 									{:else}
-										<div class="grid grid-cols-2 gap-2">
+										<!-- <div class="grid grid-cols-1"> -->
+										<div class="flex flex-col justify-between">
 											{#if item.secured}
 												<button
-													class="btn btn-sm btn-success"
+													class="btn btn-sm btn-success m-2 justify-between"
 													onclick={() => handleUnsecure(item.id)}
 													disabled={operationInProgress === item.id}
 												>
@@ -330,7 +331,7 @@
 												</button>
 											{:else}
 												<button
-													class="btn btn-error btn-sm"
+													class="btn btn-error btn-sm m-2 justify-between"
 													onclick={() => handleSecure(item.id)}
 													disabled={operationInProgress === item.id}
 												>
@@ -344,7 +345,7 @@
 											{/if}
 
 											<button
-												class="btn btn-info btn-sm"
+												class="btn btn-info btn-sm m-2 justify-between"
 												onclick={() => startEdit(item)}
 												disabled={operationInProgress === item.id}
 											>
@@ -353,7 +354,7 @@
 											</button>
 
 											<button
-												class="btn btn-sm btn-warning"
+												class="btn btn-sm btn-warning m-2 justify-between"
 												onclick={() => handleClear(item.id)}
 												disabled={operationInProgress === item.id}
 											>
@@ -366,7 +367,7 @@
 											</button>
 
 											<button
-												class="btn btn-outline btn-error btn-sm"
+												class="btn btn-outline btn-error btn-sm m-2 justify-between"
 												onclick={() => handleKill(item.id)}
 												disabled={operationInProgress === item.id}
 											>

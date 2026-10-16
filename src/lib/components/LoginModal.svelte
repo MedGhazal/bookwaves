@@ -47,7 +47,7 @@
 		loginMode === 'username_password' || loginMode === 'username_password_or_pin'
 	);
 	const loginSecretLabel = $derived(
-		loginMode === 'username_password_or_pin' ? `${m.password()} / PIN` : m.password()
+		loginMode === 'username_password_or_pin' ? "PIN" : m.password()
 	);
 	const missingLoginSecretMessage = $derived(
 		loginMode === 'username_password_or_pin'
@@ -350,12 +350,18 @@
 				<form class="mt-6 space-y-5" onsubmit={handleSubmit}>
 					<div class="form-control gap-2">
 						<label class="label" for="username">
-							<span class="label-text text-sm font-semibold">{m.username()} / Barcode</span>
+							<span class="label-text text-sm font-semibold">
+                            {#if loginMode === "username_password_or_pin"}
+                            Barcode
+                            {:else}
+                            {m.username()} / Barcode
+                            {/if}
+                            </span>
 						</label>
 						<input
 							id={usernameInputId}
 							type="text"
-							inputmode="text"
+                            inputmode="none"
 							autocomplete="username"
 							class="input-bordered input w-full input-lg"
 							bind:value={username}

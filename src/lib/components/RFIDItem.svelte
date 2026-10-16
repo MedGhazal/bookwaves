@@ -10,6 +10,7 @@
 	let {
 		item,
 		highlight = false,
+        gate=false,
 		showRfidDetails = false,
 		onMediaItemLoaded,
 		showBadges = true,
@@ -21,6 +22,7 @@
 	}: {
 		item: RFIDData;
 		highlight?: boolean;
+        gate?: boolean;
 		showRfidDetails?: boolean;
 		onMediaItemLoaded?: (mediaItem: MediaItem | null) => void;
 		showBadges?: boolean;
@@ -130,14 +132,16 @@
 </script>
 
 <div
-	class="rfid-item card border bg-base-100 shadow-sm {highlight
+	class="rfid-item card p-1 border bg-base-100 shadow-sm {highlight
 		? 'border-2 border-error bg-error/10'
 		: 'border-base-300'}"
 >
-	<div class="card-body p-4">
+	<div class="card-body p-1">
 		{#if loading}
 			<div class="flex items-start gap-3">
+                {#if !gate} 
 				<div class="h-45 w-32 shrink-0 skeleton rounded-box"></div>
+                {/if}
 				<div class="flex min-w-0 flex-1 flex-col gap-3">
 					<div class="h-5 w-3/4 skeleton"></div>
 					<div class="h-4 w-1/2 skeleton"></div>
@@ -157,6 +161,7 @@
 		{:else if mediaItem}
 			<!-- Media Item Information -->
 			<div class="flex items-stretch gap-3">
+                {#if !gate}
 				<div class="h-[180px] w-[120px] shrink-0">
 					{#if mediaItem.cover}
 						<img
@@ -166,6 +171,7 @@
 						/>
 					{/if}
 				</div>
+                {/if}
 				<div class="min-w-0 flex-1">
 					<h3 class="card-title truncate text-2xl font-semibold">
 						{getDisplayTitle(mediaItem)}
