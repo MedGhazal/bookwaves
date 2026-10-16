@@ -9,15 +9,15 @@ import type {
 	MediaItem
 } from '../../lms/lms';
 import * as v from 'valibot';
-import { logger } from '$lib/server/logger';
-import { getLocale } from '$lib/paraglide/runtime';
+import { logger } from '#lib/server/logger.js';
+import { getLocale } from '#lib/paraglide/runtime.js';
 import { buildProviderCoverUrl, type CoverImageProvider } from './cover-image-provider';
 import type {
 	CompleteTransitAt,
 	ReturnCondition,
 	ReturnDirective,
 	ReturnRule
-} from '$lib/server/config';
+} from '#lib/server/config.js';
 
 const DEFAULT_API_URL = 'https://api-eu.hosted.exlibrisgroup.com/almaws/v1/';
 
@@ -65,8 +65,8 @@ type AlmaUserData = v.InferOutput<typeof UserSchema> & {
 export const ItemSchema = v.object({
 	bib_data: v.object({
 		title: v.string(),
-		author: v.string(),
 		mms_id: v.string(),
+		author: v.optional(v.string()),
 		complete_edition: v.optional(v.string()),
 		isbn: v.optional(v.string()),
 		place_of_publication: v.optional(v.string()),
