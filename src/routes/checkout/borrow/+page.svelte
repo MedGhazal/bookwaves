@@ -88,7 +88,7 @@
 		mediaItem: MediaItem | null;
 		mediaResolved: boolean;
 		actionReady: boolean;
-		status: 'checking' | 'lending' | 'success' | 'failed';
+		status: 'pending' | 'checking' | 'lending' | 'success' | 'failed';
 		message?: string;
 		rfidWarning?: string;
 		rfidRetrying?: boolean;
@@ -126,18 +126,22 @@
 	}
 
 	async function handleMediaItemLoaded(processed: ProcessedItem, mediaItem: MediaItem | null) {
-		if (processed.status !== 'checking') return;
+		// if (processed.status !== 'checking') return;
+        if (processed.status !== 'pending') return;
 
 		processed.mediaResolved = true;
 		processed.mediaItem = mediaItem;
 
-		if (!processed.actionReady) {
-			processed.message = m.waiting_for_stable_signal_message();
-			processedItems = [...processedItems];
-			return;
-		}
+        processed.message = mediaItem ? mediaItem.title : m.item_not_found_in_lms_message();
+        processedItems = [...processedItems];
 
-		await attemptBorrow(processed);
+		// if (!processed.actionReady) {
+		//	processed.message = m.waiting_for_stable_signal_message();
+		//	processedItems = [...processedItems];
+		//	return;
+		// }
+
+		// await attemptBorrow(processed);
 	}
 
 	async function attemptBorrow(processed: ProcessedItem) {
@@ -294,26 +298,129 @@
 		if (existing) {
 			existing.rfidData = rfidData;
 			existing.actionReady = existing.actionReady || actionReady;
-			if (existing.status === 'checking' && existing.actionReady && existing.mediaResolved) {
-				void attemptBorrow(existing);
-			}
+			// if (existing.status === 'checking' && existing.actionReady && existing.mediaResolved) {
+			//	void attemptBorrow(existing);
+			// }
 			processedItems = [...processedItems];
 			return;
 		}
 
 		resetIdleCountdown();
 
-		// Add item with checking status
+		// Add item with pending status status
 		const processed: ProcessedItem = {
 			rfidData,
 			mediaItem: null,
 			mediaResolved: false,
 			actionReady,
-			status: 'checking',
-			message: actionReady ? m.preparing_to_borrow_message() : m.waiting_for_stable_signal_message()
+			status: 'pending',
+			// message: actionReady ? m.preparing_to_borrow_message() : m.waiting_for_stable_signal_message()
+            message: m.waiting_for_stable_signal_message()
 		};
 		processedItems = [processed, ...processedItems];
 	}
+
+async function confirmBorrow(processed: ProcessedItem) {
+        if (processed.status !== 'pending') return;
+
+        if (workflowWarning) {
+            processed.status = 'failed';
+            processed.message = workflowWarning ?? undefined;
+            processedItems = [...processedItems];
+            return;
+        }
+
+        const mediaItem = processed.mediaItem;
+        if (!mediaItem) {
+            processed.status = 'failed';
+            processed.message = m.item_not_found_in_lms_message();
+            processedItems = [...processedItems];
+            return;
+        }
+
+        processed.status = 'lending';
+        processed.message = m.awaiting_lms_response_message();
+        processedItems = [...processedItems];
+
+        let result: LmsActionResult | undefined;
+        try {
+            const context =
+                checkoutProfileId && checkoutProfileRequired ? { checkoutProfileId } : undefined;
+            result = await borrowItem({
+                barcode: processed.rfidData.mediaId || processed.rfidData.id,
+                context
+            });
+        } catch (error) {
+            clientLogger.error({ err: error }, 'Borrow item call failed');
+            result = { ok: false, reason: m.unexpected_error_lending_message() };
+        }
+
+        if (result?.ok) {
+            processed.status = 'success';
+            const msgFn = result.messageKey
+                ? (m as unknown as Record<string, () => string>)[result.messageKey]
+                : undefined;
+            processed.message = msgFn?.() ?? result.message ?? m.successfully_borrowed_message();
+
+            if (processed.component?.refresh) {
+                await processed.component.refresh();
+            }
+            const itemForSession = result.item ?? mediaItem;
+            processed.mediaItem = itemForSession ?? processed.mediaItem;
+            processed.rfidWarning = undefined;
+
+            if (readerInstance?.unsecure) {
+                try {
+                    const unsecureResult = await readerInstance.unsecure(processed.rfidData.id);
+                    if (!unsecureResult.success) {
+                        processed.rfidWarning = formatRfidSecurityWarning(
+                            new Error(unsecureResult.message ?? m.unknown_error())
+                        );
+                    }
+                } catch (err) {
+                    clientLogger.error({ err }, 'Failed to unsecure item after borrow');
+                    processed.rfidWarning = formatRfidSecurityWarning(err);
+                }
+            }
+
+            addSessionItem({
+                rfidData: processed.rfidData,
+                mediaItem: itemForSession,
+                timestamp: Date.now(),
+                status: 'success',
+                message: processed.message,
+                rfidWarning: processed.rfidWarning
+            });
+        } else {
+            processed.status = 'failed';
+            const reasonFn = result?.reasonKey
+                ? (m as unknown as Record<string, () => string>)[result.reasonKey]
+                : undefined;
+            processed.message = reasonFn?.() ?? result?.reason ?? m.lending_failure_message();
+
+            addSessionItem({
+                rfidData: processed.rfidData,
+                mediaItem,
+                timestamp: Date.now(),
+                status: 'failed',
+                message: processed.message
+            });
+        }
+
+        processedItems = [...processedItems];
+        currentSession = getCheckoutSession();
+    }
+
+    async function confirmAllPending() {
+        const pendingItems = processedItems.filter((item) => item.status === 'pending');
+        for (const item of pendingItems) {
+            await confirmBorrow(item);
+        }
+    }
+
+    function removeItem(processed: ProcessedItem) {
+        processedItems = processedItems.filter((p) => getItemIdentity(p.rfidData) !== getItemIdentity(processed.rfidData));
+    }
 
 	async function initSessionAndReader(activeUser: string): Promise<boolean> {
 		// Initialize or restore session once
@@ -557,6 +664,12 @@
 						<progress class="progress w-full progress-primary" value={countdownProgress} max="100"
 						></progress>
 					</div>-->
+                    {#if processedItems.some(i => i.status === 'pending')}
+                    <button class="btn btn-primary btn-lg shadow-xl" onclick={confirmAllPending}>
+                        <!-- TODO: Add this to messages -->
+                        <Check class="h-6 w-6" /> Confirm & Borrow All
+                    </button>
+                    {/if}
 					<div
 						class="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide uppercase"
 					>
@@ -601,15 +714,34 @@
 										<div
 											class="ml-0 flex items-center gap-2 md:ml-4 md:max-w-[25%] md:basis-1/4 md:justify-end"
 										>
-											{#if item.status === 'checking' || item.status === 'lending'}
-												<div
-													class="card w-full border border-base-300 bg-base-100 px-4 py-3 shadow-sm"
-												>
-													<div class="flex items-center gap-3">
-														<span class="loading loading-md loading-spinner text-primary"></span>
-														<span class="text-left text-base">{item.message}</span>
-													</div>
-												</div>
+                                            {#if item.status === 'pending'}
+                                                <div class="flex w-full flex-col gap-2">
+                                                    <div class="badge badge-warning gap-2 p-3 text-sm font-medium">
+                                                        Pending Review
+                                                    </div>
+                                                    <div class="flex gap-2">
+                                                        <button 
+                                                            class="btn btn-primary btn-sm flex-1" 
+                                                            onclick={() => confirmBorrow(item)}
+                                                            disabled={!item.mediaResolved}
+                                                        >
+                                                            <Check class="h-4 w-4" /> Borrow
+                                                        </button>
+                                                        <button 
+                                                            class="btn btn-ghost btn-sm text-error" 
+                                                            onclick={() => removeItem(item)}
+                                                        >
+                                                            <X class="h-4 w-4" /> Remove
+                                                        </button>
+                                                    </div>
+                                                </div>
+											{:else if item.status === 'checking' || item.status === 'lending'}
+												<div class="card w-full border border-base-300 bg-base-100 px-4 py-3 shadow-sm">
+                                                    <div class="flex items-center gap-3">
+                                                        <span class="loading loading-md loading-spinner text-primary"></span>
+                                                        <span class="text-left text-base">{item.message}</span>
+                                                    </div>
+                                                </div>
 											{:else if item.status === 'success'}
 												<div
 													class="card w-full border border-success/40 bg-success/10 px-4 py-4 text-base text-success shadow-sm"

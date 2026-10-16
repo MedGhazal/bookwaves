@@ -243,5 +243,9 @@
 	"epc_label": "EPC: {epc}",
 	"barcode_label": "Barcode: {barcode}",
 	"filter_readers": "Lesegeräte filtern...",
+    "inactivity_timout_message": "Wegen Inaktivität werden Sie in {duration}s Sekunden zur Startseite weitergeleitet.",
+    "inactivity_timeout_reset": "Hier bleiben",
+    "username_login_form_label": "Barcode / Benutzername",
+    "pin_login_form_label": "PIN / Passwort",
 	"na": "k. A."
 }

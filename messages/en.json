@@ -243,5 +243,9 @@
 	"epc_label": "EPC: {epc}",
 	"barcode_label": "Barcode: {barcode}",
 	"filter_readers": "Filter readers...",
+    "inactivity_timout_message": "Due to inactivity, you will be redirected to the home page in {duration}s",
+    "inactivity_timeout_reset": "Stay here",
+    "username_login_form_label": "Barcode / Username",
+    "pin_login_form_label": "PIN / Password",
 	"na": "N/A"
 }
