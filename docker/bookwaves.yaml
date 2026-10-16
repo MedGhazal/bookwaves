@@ -34,7 +34,7 @@ tagging:
 
 middleware_instances:
   - id: feig1
-    type: feig # Middleware vendor/type: feig, bibliotheca, etc.
+    type: http # Any middleware speaking the BookWaves middleware protocol; the older "feig" also still works
     url: /feig # Used by the browser, as defined in nginx proxy configuration
     internal_url: http://feig:7070 # Used by the BookWaves server to reach the Feig container directly
   - id: mock1

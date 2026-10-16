@@ -3,6 +3,7 @@ import type { ReaderInfo } from './interface';
 import { FeigRFIDReader } from './feig';
 import { MockRFIDReader } from './mock';
 import { logger } from '#lib/server/logger.js';
+import { isKnownMiddlewareType, UnknownMiddlewareTypeError } from './middlewareTypes';
 
 /**
  * The address the server uses to reach a middleware instance: its internal URL if set,
@@ -28,23 +29,44 @@ export function getServerMiddlewareUrl(config: MiddlewareInstanceConfig): string
  * Get all available readers from a middleware instance
  * @param config Middleware instance configuration
  * @returns Promise of reader information array
+ * @throws {UnknownMiddlewareTypeError} if `config.type` is not a recognised middleware type.
+ *   This is a configuration error, not "reachable with zero readers" — callers must not treat
+ *   it the same as an empty array. See `middlewareTypes.ts` for the recognised set.
+ * @throws {Error} naming the instance if the middleware cannot be queried — unreachable, an
+ *   unusable URL, or an invalid response — for the same reason.
  */
 export async function getAllReaders(config: MiddlewareInstanceConfig): Promise<ReaderInfo[]> {
+	const type = config.type.toLowerCase();
+
+	if (!isKnownMiddlewareType(type)) {
+		logger.error(
+			{ id: config.id, type: config.type },
+			'Unrecognised middleware type while fetching readers'
+		);
+		throw new UnknownMiddlewareTypeError(config.id, config.type);
+	}
+
 	try {
-		switch (config.type.toLowerCase()) {
+		switch (type) {
 			case 'mock':
 				return await MockRFIDReader.getAllReaders();
 
 			case 'feig':
+			case 'http':
 				return await FeigRFIDReader.getAllReaders(getServerMiddlewareUrl(config));
 
-			default:
-				logger.warn({ type: config.type }, 'Unknown middleware type while fetching readers');
-				return [];
+			default: {
+				throw new Error(`Middleware type "${type}" is recognised but not implemented`);
+			}
 		}
 	} catch (error) {
+		// Rethrown rather than answered with an empty list: an unreachable or misconfigured
+		// middleware must not look like a reachable one with no readers configured.
 		logger.error({ err: error, id: config.id }, 'Failed to get readers from middleware');
-		return [];
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(`Could not load readers from middleware "${config.id}": ${reason}`, {
+			cause: error
+		});
 	}
 }
 

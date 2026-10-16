@@ -25,7 +25,7 @@ How a reader delivers tag data: either `host` or `notification`. Nothing else is
 _Avoid_: Mode (unqualified), model
 
 **Host-mode reader**:
-A reader in the `host` operating mode, queried on demand by BookWaves. Required for the Reader and Tagging pages.
+A reader in the `host` operating mode, queried on demand by BookWaves. Required for the Inspector and Tagging pages.
 
 **Notification-mode reader**:
 A reader in the `notification` operating mode, pushing tag events to BookWaves. Required for Gate and Checkout.
@@ -35,7 +35,7 @@ The hardware model of a reader (e.g. LRU3000). Distinct from its operating mode.
 _Avoid_: Mode
 
 **Saved reader**:
-The middleware instance and host-mode reader chosen on the Reader or Tagging page, remembered on that device and shared by both pages.
+The middleware instance and host-mode reader chosen on the Inspector or Tagging page, remembered on that device and shared by both pages.
 _Avoid_: Persistent selection, selected reader config
 
 ## Login and sessions

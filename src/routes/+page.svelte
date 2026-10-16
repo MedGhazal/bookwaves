@@ -28,8 +28,8 @@
 
 			<NavigationCard
 				href="/reader"
-				title={m.reader_label()}
-				description={m.reader_description()}
+				title={m.inspector_label()}
+				description={m.inspector_description()}
 				icon={SquarePen}
 				iconColor="info"
 			/>

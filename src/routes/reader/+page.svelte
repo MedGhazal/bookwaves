@@ -241,7 +241,11 @@
 
 <div class="app-page-bg-reader min-h-full p-8">
 	<div class="mx-auto max-w-7xl">
-		<PageHeader title={m.reader_label()} subtitle={m.reader_description()} variant="compact" />
+		<PageHeader
+			title={m.inspector_label()}
+			subtitle={m.inspector_description()}
+			variant="compact"
+		/>
 		<div class="mt-4">
 			<ReaderSelector
 				middlewareReaders={data.middlewareReaders}

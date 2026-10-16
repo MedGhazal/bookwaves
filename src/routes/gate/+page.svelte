@@ -6,7 +6,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import type { PageProps } from './$types';
-	import { createReaderFromParams } from '#lib/stores/reader-selection.js';
+	import { createReaderFromParams, getReaderConfigProblem } from '#lib/stores/reader-selection.js';
 	import type { RFIDData } from '#lib/reader/interface.js';
 	import { clientLogger } from '#lib/client/logger.js';
 	import { m } from '#lib/paraglide/messages.js';
@@ -31,6 +31,10 @@
 	const readerWarning = $derived(
 		readerError ?? (missingReaderParams ? m.no_reader_found_message() : null)
 	);
+	// Distinguishes "no reader selected yet" (normal) from "the configured middleware's type is
+	// not one BookWaves recognises" (a real configuration problem) so both stop reading as the
+	// same reader_not_configured state.
+	const readerConfigProblem = $derived(getReaderConfigProblem(data.readerConfig.middlewareType));
 
 	// TODO: Hide them after a timeout
 
@@ -56,7 +60,12 @@
 			clientLogger.error(
 				'No reader configured. Please configure a reader via URL params or admin page.'
 			);
-			readerError = m.no_reader_found_while_monitoring_message();
+			readerError =
+				readerConfigProblem === 'unknown_middleware_type'
+					? m.reader_type_not_recognised_message({
+							type: data.readerConfig.middlewareType ?? ''
+						})
+					: m.no_reader_found_while_monitoring_message();
 			return;
 		}
 
@@ -109,7 +118,11 @@
 		{#if readerWarning}
 			<div class="mb-6 alert alert-warning shadow-lg">
 				<div>
-					<strong>{m.reader_not_configured()}.</strong>
+					<strong
+						>{readerConfigProblem === 'unknown_middleware_type'
+							? m.reader_misconfigured()
+							: m.reader_not_configured()}.</strong
+					>
 					{readerWarning}
 					{m.contact_staff()}.
 				</div>
