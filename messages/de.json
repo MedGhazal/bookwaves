@@ -243,5 +243,7 @@
 	"epc_label": "EPC: {epc}",
 	"barcode_label": "Barcode: {barcode}",
 	"filter_readers": "Lesegeräte filtern...",
+    "inactivity_timout_message": "Wegen Inaktivität werden Sie in {duration}s Sekunden zur Startseite weitergeleitet.",
+    "inactivity_timeout_reset": "Hier bleiben",
 	"na": "k. A."
 }
