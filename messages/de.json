@@ -76,6 +76,7 @@
 	"lookup": "Nachschlagen",
 	"borrow": "Ausleihen",
 	"return": "Rückgabe",
+    "remove": "Entfernen",
 	"utilities": "Hilfsprogramme",
 	"fees": "Gebühren",
 	"shelfmark": "Signatur",
@@ -247,5 +248,9 @@
     "inactivity_timeout_reset": "Hier bleiben",
     "username_login_form_label": "Barcode / Benutzername",
     "pin_login_form_label": "PIN / Passwort",
+    "borrow_all": "Alles ausleihen",
+    "return_all": "Alles zurückgeben",
+    "item_security_out_of_sync": "Sicherheit nicht synchronisiert",
+    "item_security_synced": "Sicherheit synchronisiert",
 	"na": "k. A."
 }

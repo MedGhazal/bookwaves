@@ -70,6 +70,7 @@
 	const noMediaFoundImageUrl = $derived(
 		data.checkoutConfig?.noMediaFoundImageUrl || placeBooksDefaultImage
 	);
+    const autoBorrowActive = $derived(data.autoBorrowActive);
 
 	const idleCountdown = createIdleCountdown({
 		seconds: IDLE_TIMEOUT_SECONDS,
@@ -126,28 +127,32 @@
 	}
 
 	async function handleMediaItemLoaded(processed: ProcessedItem, mediaItem: MediaItem | null) {
-		// if (processed.status !== 'checking') return;
-        if (processed.status !== 'pending') return;
+        if (autoBorrowActive && processed.status !== 'checking') return;
+        if (!autoBorrowActive && processed.status !== 'pending') return;
 
 		processed.mediaResolved = true;
 		processed.mediaItem = mediaItem;
-
         processed.message = mediaItem ? mediaItem.title : m.item_not_found_in_lms_message();
         processedItems = [...processedItems];
 
-		// if (!processed.actionReady) {
-		//	processed.message = m.waiting_for_stable_signal_message();
-		//	processedItems = [...processedItems];
-		//	return;
-		// }
-
-		// await attemptBorrow(processed);
+		if (!processed.actionReady) {
+            processed.message = m.waiting_for_stable_signal_message();
+            processedItems = [...processedItems];
+            return;
+		}
+         
+        if (autoBorrowActive) {
+            await attemptBorrow(processed);
+        }
 	}
 
 	async function attemptBorrow(processed: ProcessedItem) {
-		if (processed.status !== 'checking' || !processed.actionReady || !processed.mediaResolved) {
-			return;
-		}
+		if (autoBorrowActive && processed.status !== 'checking') return;
+        if (!autoBorrowActive && processed.status !== 'pending') return;
+
+        if (!processed.actionReady || !processed.mediaResolved) {
+            return;
+        }
 
 		if (workflowWarning) {
 			processed.status = 'failed';
@@ -298,9 +303,9 @@
 		if (existing) {
 			existing.rfidData = rfidData;
 			existing.actionReady = existing.actionReady || actionReady;
-			// if (existing.status === 'checking' && existing.actionReady && existing.mediaResolved) {
-			//	void attemptBorrow(existing);
-			// }
+			if (existing.status === 'checking' && existing.actionReady && existing.mediaResolved) {
+			    void attemptBorrow(existing);
+			}
 			processedItems = [...processedItems];
 			return;
 		}
@@ -313,14 +318,13 @@
 			mediaItem: null,
 			mediaResolved: false,
 			actionReady,
-			status: 'pending',
-			// message: actionReady ? m.preparing_to_borrow_message() : m.waiting_for_stable_signal_message()
-            message: m.waiting_for_stable_signal_message()
+			status: autoBorrowActive ? 'checking' : 'pending',
+			message: autoBorrowActive ? m.preparing_to_borrow_message() : m.waiting_for_stable_signal_message()
 		};
 		processedItems = [processed, ...processedItems];
 	}
 
-async function confirmBorrow(processed: ProcessedItem) {
+    async function confirmBorrow(processed: ProcessedItem) {
         if (processed.status !== 'pending') return;
 
         if (workflowWarning) {
@@ -664,18 +668,18 @@ async function confirmBorrow(processed: ProcessedItem) {
 						<progress class="progress w-full progress-primary" value={countdownProgress} max="100"
 						></progress>
 					</div>-->
-                    {#if processedItems.some(i => i.status === 'pending')}
-                    <button class="btn btn-primary btn-lg shadow-xl" onclick={confirmAllPending}>
-                        <!-- TODO: Add this to messages -->
-                        <Check class="h-6 w-6" /> Confirm & Borrow All
-                    </button>
-                    {/if}
 					<div
 						class="flex items-center justify-between gap-2 text-xs font-semibold tracking-wide uppercase"
 					>
 						<span>Timeout</span>
 						<span>{countdownSeconds}s</span>
 					</div>
+                    {#if processedItems.some(i => i.status === 'pending')}
+                    <button class="btn btn-primary btn-lg shadow-xl" onclick={confirmAllPending}>
+                        <!-- TODO: Add this to messages -->
+                        <Check class="h-6 w-6" /> {m.borrow_all()}
+                    </button>
+                    {/if}
 					<button class="btn shadow-xl btn-accent btn-lg" onclick={handleDoneClick}>
 						<Check />{m.i_am_done()}
 					</button>
@@ -716,22 +720,12 @@ async function confirmBorrow(processed: ProcessedItem) {
 										>
                                             {#if item.status === 'pending'}
                                                 <div class="flex w-full flex-col gap-2">
-                                                    <div class="badge badge-warning gap-2 p-3 text-sm font-medium">
-                                                        Pending Review
-                                                    </div>
                                                     <div class="flex gap-2">
-                                                        <button 
-                                                            class="btn btn-primary btn-sm flex-1" 
-                                                            onclick={() => confirmBorrow(item)}
-                                                            disabled={!item.mediaResolved}
-                                                        >
-                                                            <Check class="h-4 w-4" /> Borrow
+                                                        <button class="btn btn-primary btn-s py-16" onclick={() => confirmBorrow(item)} disabled={!item.mediaResolved}>
+                                                            <Check class="h-4 w-4"/> {m.borrow()}
                                                         </button>
-                                                        <button 
-                                                            class="btn btn-ghost btn-sm text-error" 
-                                                            onclick={() => removeItem(item)}
-                                                        >
-                                                            <X class="h-4 w-4" /> Remove
+                                                        <button class="btn btn-seconday btn-s py-16" onclick={() => removeItem(item)}>
+                                                            <X class="h-4 w-4"/> {m.remove()}
                                                         </button>
                                                     </div>
                                                 </div>

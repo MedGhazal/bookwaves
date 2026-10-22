@@ -12,6 +12,7 @@ export const load = (async ({ cookies }) => {
 	let loginHelpImage: LoginHelpImageConfig | undefined;
 	let scannerFocusAssist = false;
 	let topAlignedModal = false;
+    let autoBorrowActive = true;
 
 	try {
 		const config = getConfig();
@@ -19,6 +20,7 @@ export const load = (async ({ cookies }) => {
 		loginHelpImage = config.login?.login_help_image;
 		scannerFocusAssist = config.login?.scanner_focus_assist ?? false;
 		topAlignedModal = config.login?.top_aligned_modal ?? false;
+        autoBorrowActive = config.checkout?.auto_borrow ?? true;
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load login config; defaulting to username/password');
 	}
@@ -33,6 +35,7 @@ export const load = (async ({ cookies }) => {
 			loginMode,
 			loginHelpImage,
 			scannerFocusAssist,
+            autoBorrowActive,
 			topAlignedModal
 		};
 	}
@@ -50,6 +53,7 @@ export const load = (async ({ cookies }) => {
 			loginMode,
 			loginHelpImage,
 			scannerFocusAssist,
+            autoBorrowActive,
 			topAlignedModal
 		};
 	}
@@ -64,6 +68,7 @@ export const load = (async ({ cookies }) => {
 			loginMode,
 			loginHelpImage,
 			scannerFocusAssist,
+            autoBorrowActive,
 			topAlignedModal
 		};
 	} catch (error) {
@@ -77,6 +82,7 @@ export const load = (async ({ cookies }) => {
 			loginMode,
 			loginHelpImage,
 			scannerFocusAssist,
+            autoBorrowActive,
 			topAlignedModal
 		};
 	}

@@ -128,6 +128,8 @@ export interface CheckoutProfileConfig {
 
 export interface CheckoutConfig {
 	profiles?: CheckoutProfileConfig[];
+    auto_borrow?: boolean;
+    auto_return?: boolean;
 	no_media_found_image?: string;
 }
 
@@ -190,6 +192,8 @@ const DEFAULT_TAGGING_CONFIG: Required<TaggingConfig> = {
 };
 const DEFAULT_CHECKOUT_CONFIG: CheckoutConfig = {
 	profiles: [],
+    auto_borrow: true,
+    auto_return: true,
 	no_media_found_image: undefined
 };
 const DEFAULT_THEME_CONFIG: ThemeConfig = {
@@ -670,6 +674,8 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 function parseCheckoutConfig(data: LMSConfig): CheckoutConfig {
 	return {
 		profiles: parseCheckoutProfiles(data),
+        auto_borrow: data.checkout?.auto_borrow,
+        auto_return: data.checkout?.auto_return,
 		no_media_found_image:
 			validateSource(data.checkout?.no_media_found_image) ??
 			DEFAULT_CHECKOUT_CONFIG.no_media_found_image
@@ -833,6 +839,8 @@ checkout:
       type: alma
       library: MAIN_LIBRARY
       circulation_desk: SELF-CHECKOUT-CIRC2
+  auto_borrow: true # Defaults to true. If true, the step pending in borrow is skipped and all the detected items will be borrowed
+  auto_return: true # Defaults to true. If true, the same as in auto_borrow but for the return workflow
 
 # Security gate display configuration
 gate:

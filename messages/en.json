@@ -63,6 +63,7 @@
 	"borrow_failed": "Borrow failed",
 	"return_succeeded": "Return succeeded",
 	"return_failed": "Return failed",
+    "remove": "remove",
 	"lms_reachable": "LMS reachable",
 	"lms_unreachable": "LMS unreachable",
 	"system_configuration": "System Configuration",
@@ -247,5 +248,7 @@
     "inactivity_timeout_reset": "Stay here",
     "username_login_form_label": "Barcode / Username",
     "pin_login_form_label": "PIN / Password",
+    "borrow_all": "Borrow all",
+    "return_all": "Return all",
 	"na": "N/A"
 }
