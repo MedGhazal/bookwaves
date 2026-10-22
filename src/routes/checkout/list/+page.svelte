@@ -206,7 +206,7 @@
 							animate:flip={{ duration: 200 }}
 						>
 							<div class="p-4 hover:bg-base-200">
-								<RFIDItem {item} showBadges={false} {checkoutContext} />
+								<RFIDItem {item} showBadges={false} {checkoutContext} showSecuritySyncState={true}/>
 							</div>
 						</li>
 					{:else}

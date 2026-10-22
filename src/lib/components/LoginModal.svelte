@@ -39,7 +39,7 @@
 	}: Props = $props();
 
     const IDLE_WARNING_THRESHOLD_SEC = 20;
-    let idleSecondsRemaining = $state(idleTimeoutSeconds);
+    let idleSecondsRemaining = $derived(idleTimeoutSeconds);
     let idleTimer: ReturnType<typeof setInterval> | null = null;
 
 	const helpImage = $derived.by(() => {

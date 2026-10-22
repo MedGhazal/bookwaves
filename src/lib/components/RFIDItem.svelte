@@ -18,6 +18,7 @@
 		showSecurity = true,
 		showLibraryLocation = true,
 		showPublicationLine = true,
+        showSecuritySyncState = false,
 		checkoutContext
 	}: {
 		item: RFIDData;
@@ -32,15 +33,40 @@
 		showPublicationLine?: boolean;
 		/** Terminal the lookup happens at; required for a return directive to resolve. */
 		checkoutContext?: CheckoutContext;
+        showSecuritySyncState?: boolean;
 	} = $props();
 
 	let mediaItem = $state<MediaItem | null>(null);
-	let loading = $state(true);
+	let loading = $state<boolean | null>(null);
+    let secured = $state(item.secured);
 	let fetchError = $state<string | null>(null);
+    let isSecuritySynced = $state(false);
 
 	onMount(async () => {
 		await fetchMediaItem();
 	});
+
+    function getSecuritySyncState() {
+        if (mediaItem === undefined || mediaItem === null) {
+            return undefined;
+        }
+        else if ((secured && mediaItem.status !== 'borrowed') || (!secured && mediaItem.status === 'borrowed')) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function getSecuritySyncStateText() {
+        if (mediaItem === undefined || mediaItem === null) {
+            return m.security_bit_state_unknown();
+        }
+        else if ((secured && mediaItem.status !== 'borrowed') || (!secured && mediaItem.status === 'borrowed')) {
+            return m.item_security_synced();
+        } else {
+            return m.item_security_out_of_sync();
+        }
+    }
 
 	async function fetchMediaItem() {
 		loading = true;
@@ -221,6 +247,11 @@
 							{/if}
 						</div>
 					{/if}
+                    {#if showSecuritySyncState}
+						<div class="mt-2 flex flex-wrap gap-2 text-xs opacity-70">
+                            <div class="badge {getSecuritySyncState() ? 'badge-success' : 'badge-error'} badge-sm">{getSecuritySyncStateText()}</div>
+						</div>
+                    {/if}
 				</div>
 				{#if mediaItem.shelfmark || (showBin && mediaItem.returnDirective)}
 					<div class="flex min-w-40 items-center justify-center gap-3 text-center">

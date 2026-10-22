@@ -250,5 +250,6 @@
     "pin_login_form_label": "PIN / Password",
     "borrow_all": "Borrow all",
     "return_all": "Return all",
+    "format": "Format",
 	"na": "N/A"
 }
