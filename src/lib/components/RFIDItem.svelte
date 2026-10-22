@@ -6,6 +6,7 @@
 	import { Lock, LockOpen, Tag } from '@lucide/svelte';
 	import { clientLogger } from '#lib/client/logger.js';
 	import { m } from '#lib/paraglide/messages.js';
+    import type { RFIDReader } from '#lib/reader/interface.js';
 
 	let {
 		item,
@@ -19,6 +20,9 @@
 		showLibraryLocation = true,
 		showPublicationLine = true,
         showSecuritySyncState = false,
+        securitySynchingActive = false,
+        reader = null,
+        hideLocation = false,
 		checkoutContext
 	}: {
 		item: RFIDData;
@@ -34,6 +38,9 @@
 		/** Terminal the lookup happens at; required for a return directive to resolve. */
 		checkoutContext?: CheckoutContext;
         showSecuritySyncState?: boolean;
+        securitySynchingActive?: boolean;
+        hideLocation?: boolean;
+        reader?: RFIDReader | null;
 	} = $props();
 
 	let mediaItem = $state<MediaItem | null>(null);
@@ -41,10 +48,35 @@
     let secured = $state(item.secured);
 	let fetchError = $state<string | null>(null);
     let isSecuritySynced = $state(false);
+	let rfidWarning = undefined;
+	let rfidSecuritySynching = false;
 
 	onMount(async () => {
 		await fetchMediaItem();
 	});
+
+	async function trySecuritySync(item: RFIDData) {
+        if (reader === null) {
+            return;
+        }
+        rfidSecuritySynching = true;
+		try {
+            let result = null;
+            if (secured) {
+                result = await reader.unsecure(item.id);
+            } else {
+                result = await reader.secure(item.id);
+            }
+			if (!result.success) {
+				rfidWarning = new Error(result.message ?? m.unknown_error());
+			}
+		} catch (error) {
+			clientLogger.error({ err: error }, 'RFID security sync retry failed');
+			rfidWarning = error;
+		} finally {
+			rfidSecuritySynching = false;
+		}
+	}
 
     function getSecuritySyncState() {
         if (mediaItem === undefined || mediaItem === null) {
@@ -237,7 +269,7 @@
 							{/if}
 						</div>
 					{/if}
-					{#if showBadges && showLibraryLocation && (mediaItem.library || mediaItem.location)}
+					{#if showBadges && showLibraryLocation && (mediaItem.library || mediaItem.location) && !hideLocation}
 						<div class="mt-2 flex flex-wrap gap-2 text-xs opacity-70">
 							{#if mediaItem.library}
 								<div class="badge badge-outline badge-sm">{mediaItem.library}</div>
@@ -249,11 +281,16 @@
 					{/if}
                     {#if showSecuritySyncState}
 						<div class="mt-2 flex flex-wrap gap-2 text-xs opacity-70">
+                            {#if rfidSecuritySynching && securitySynchingActive}
+                            <span class="loading loading-md loading-spinner text-primary"></span>
+                            <div class="badge badge-info badge-sm">{m.synching_security()}</div>
+                            {:else}
                             <div class="badge {getSecuritySyncState() ? 'badge-success' : 'badge-error'} badge-sm">{getSecuritySyncStateText()}</div>
+                            {/if}
 						</div>
                     {/if}
 				</div>
-				{#if mediaItem.shelfmark || (showBin && mediaItem.returnDirective)}
+				{#if (mediaItem.shelfmark || (showBin && mediaItem.returnDirective)) && !hideLocation}
 					<div class="flex min-w-40 items-center justify-center gap-3 text-center">
 						{#if mediaItem.shelfmark}
 							<span class="text-lg font-semibold text-base-content/70">

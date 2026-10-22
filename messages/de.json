@@ -253,5 +253,6 @@
     "item_security_out_of_sync": "Sicherheit nicht synchronisiert",
     "item_security_synced": "Sicherheit synchronisiert",
     "format": "Format",
+    "synching_security": "Sicherheit Synchronisation...",
 	"na": "k. A."
 }

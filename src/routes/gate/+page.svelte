@@ -15,6 +15,7 @@
 
 	let detectedItems: Array<RFIDData> = $state([]);
 	let showAllDetectedItems = $derived(data.gateConfig?.showAllDetectedItems ?? true);
+    const hideLocation = $derived(data.gateConfig?.hideLocation ?? false);
 	let visibleItems = $derived(
 		showAllDetectedItems ? detectedItems : detectedItems.filter((item) => item.secured)
 	);
@@ -186,7 +187,7 @@
                                     animate:flip={{ duration: 200 }}
                                 >
                                     <div class="p-2 hover:bg-base-200 {item.secured ? 'bg-error/10' : ''}">
-                                        <RFIDItem {item} highlight={item.secured} showBadges={false} showBin={false} gate={true}/>
+                                        <RFIDItem {item} highlight={item.secured} showBadges={false} showBin={false} gate={true} {hideLocation}/>
                                     </div>
                                 </li>
                             {:else}

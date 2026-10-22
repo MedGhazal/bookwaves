@@ -130,6 +130,7 @@ export interface CheckoutConfig {
 	profiles?: CheckoutProfileConfig[];
     auto_borrow?: boolean;
     auto_return?: boolean;
+    security_synching_enabled?: boolean;
 	no_media_found_image?: string;
 }
 
@@ -155,6 +156,7 @@ export interface ThemeConfig {
 
 export interface LMSConfig {
 	log_level?: LogLevel;
+    hide_location?: boolean;
 	lms: {
 		type: string;
 		api_key: string;
@@ -194,6 +196,7 @@ const DEFAULT_CHECKOUT_CONFIG: CheckoutConfig = {
 	profiles: [],
     auto_borrow: true,
     auto_return: true,
+    security_synching_enabled: false,
 	no_media_found_image: undefined
 };
 const DEFAULT_THEME_CONFIG: ThemeConfig = {
@@ -676,6 +679,7 @@ function parseCheckoutConfig(data: LMSConfig): CheckoutConfig {
 		profiles: parseCheckoutProfiles(data),
         auto_borrow: data.checkout?.auto_borrow,
         auto_return: data.checkout?.auto_return,
+        security_synching_enabled: data.checkout?.security_synching_enabled,
 		no_media_found_image:
 			validateSource(data.checkout?.no_media_found_image) ??
 			DEFAULT_CHECKOUT_CONFIG.no_media_found_image
@@ -707,6 +711,7 @@ function normalizeConfigData(data: LMSConfig, requireTaggingFormats: boolean): L
 
 	const parsedLoginMode = data.login?.mode ?? DEFAULT_LOGIN_MODE;
 
+    data.hide_location = data.hide_location ?? false;
 	data.log_level = parseLogLevel(data.log_level, 'info');
 	data.lms = parseLmsConfig(data);
 	data.login = {
@@ -812,6 +817,7 @@ lms:
   #   url: 'https://api.ub.tu-dortmund.de/ccm/cover'
 
 log_level: info # Logging level: fatal, error, warn, info, debug, trace, silent
+hide_location: false # this hides the loation data of the RFIDItem component
 
 # Login flow configuration
 login:
@@ -841,6 +847,7 @@ checkout:
       circulation_desk: SELF-CHECKOUT-CIRC2
   auto_borrow: true # Defaults to true. If true, the step pending in borrow is skipped and all the detected items will be borrowed
   auto_return: true # Defaults to true. If true, the same as in auto_borrow but for the return workflow
+  security_synching_enabled: false # Defauts to false. If true, in book list a synching of the security with the alma state (borrowed/in place) is attempted
 
 # Security gate display configuration
 gate:
@@ -914,6 +921,7 @@ export function getConfig(): LMSConfig {
 
 		cachedConfig = {
 			log_level: 'info',
+            hide_location: false,
 			lms: { type: 'mock', api_key: '' },
 			login: {
 				mode: DEFAULT_LOGIN_MODE,

@@ -11,10 +11,12 @@ export const load: LayoutServerLoad = async ({ url }) => {
 	let middlewareUrl: string | undefined;
 	let middlewareType: string | undefined;
 	let showAllDetectedItems = true;
+    let hideLocation = false;
 
 	try {
 		const config = getConfig();
 		showAllDetectedItems = config.gate?.show_all_detected_items ?? true;
+        hideLocation = config.hide_location ?? false;
 		if (middlewareId) {
 			const middleware = config.middleware_instances.find((m) => m.id === middlewareId);
 			if (middleware) {
@@ -38,7 +40,8 @@ export const load: LayoutServerLoad = async ({ url }) => {
 			middlewareType
 		},
 		gateConfig: {
-			showAllDetectedItems
+			showAllDetectedItems,
+            hideLocation,
 		}
 	};
 };
