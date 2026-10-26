@@ -3,17 +3,17 @@ import { getConfig, type LoginMode } from '#lib/server/config.js';
 import { logger } from '#lib/server/logger.js';
 
 export const load = (async () => {
-	let securitySynchingActive = false;
+	let securitySyncingActive = false;
     let hideLocation = false;
 	try {
 		const config = getConfig();
-        securitySynchingActive = config.checkout?.security_synching_enabled ?? false;
+        securitySyncingActive = config.checkout?.security_syncing_enabled ?? false;
         hideLocation = config.hide_location ?? false;
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load config');
 	}
     return {
-        securitySynchingActive,
+        securitySyncingActive,
         hideLocation
     }
 }) satisfies PageServerLoad;

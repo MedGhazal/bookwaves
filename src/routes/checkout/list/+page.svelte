@@ -19,7 +19,7 @@
 	let detectedItems: Array<RFIDData> = $state([]);
 	let readerUnsubscribe: (() => void) | null = null;
 	let countdownSeconds = $state(IDLE_TIMEOUT_SECONDS);
-    let securitySynchingActive = $derived(data.securitySynchingActive);
+    let securitySyncingActive = $derived(data.securitySyncingActive);
     let hideLocation = $derived(data.hideLocation);
 	//const countdownProgress = $derived(Math.round((countdownSeconds / IDLE_TIMEOUT_SECONDS) * 100));
 	const missingReaderParams = $derived(
@@ -214,8 +214,8 @@
                                           showBadges={false} 
                                           {checkoutContext} 
                                           showSecuritySyncState={true} 
-                                          {hideLocation} 
-                                          {securitySynchingActive} 
+                                          hideLocation={hideLocation} 
+                                          {securitySyncingActive} 
                                           reader={reader}/>
 							</div>
 						</li>

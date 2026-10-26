@@ -31,6 +31,7 @@
 	import placeBooksDefaultImage from '#lib/assets/place_book.png';
 
 	let { data }: PageProps = $props();
+    let hideLocation = $derived(data.hideLocation);
 
 	let showSummaryModal = $state(false);
 	let countdownSeconds = $state(IDLE_TIMEOUT_SECONDS);
@@ -556,6 +557,7 @@
 											item={item.rfidData}
 											showBadges={false}
 											showBin={false}
+                                            hideLocation={hideLocation}
 											{checkoutContext}
 											bind:this={item.component}
 											onMediaItemLoaded={(mediaItem) => handleMediaItemLoaded(item, mediaItem)}

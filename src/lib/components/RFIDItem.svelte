@@ -20,7 +20,7 @@
 		showLibraryLocation = true,
 		showPublicationLine = true,
         showSecuritySyncState = false,
-        securitySynchingActive = false,
+        securitySyncingActive = false,
         reader = null,
         hideLocation = false,
 		checkoutContext
@@ -38,18 +38,21 @@
 		/** Terminal the lookup happens at; required for a return directive to resolve. */
 		checkoutContext?: CheckoutContext;
         showSecuritySyncState?: boolean;
-        securitySynchingActive?: boolean;
+        securitySyncingActive?: boolean;
         hideLocation?: boolean;
         reader?: RFIDReader | null;
 	} = $props();
 
+    const MAX_SECURITY_SYNC_TRIES = 10;
 	let mediaItem = $state<MediaItem | null>(null);
-	let loading = $state<boolean | null>(null);
+    let loading = $state(true);
     let secured = $state(item.secured);
 	let fetchError = $state<string | null>(null);
     let isSecuritySynced = $state(false);
 	let rfidWarning = undefined;
-	let rfidSecuritySynching = false;
+	let rfidSecuritySyncing = $state(false);
+    let rfidSecurityState = $state<boolean | null | undefined>(null);
+    let itemLoadedNotified = false;
 
 	onMount(async () => {
 		await fetchMediaItem();
@@ -59,7 +62,7 @@
         if (reader === null) {
             return;
         }
-        rfidSecuritySynching = true;
+        rfidSecuritySyncing = true;
 		try {
             let result = null;
             if (secured) {
@@ -73,30 +76,34 @@
 		} catch (error) {
 			clientLogger.error({ err: error }, 'RFID security sync retry failed');
 			rfidWarning = error;
+            return false;
 		} finally {
-			rfidSecuritySynching = false;
+            const startTime = Date.now();
+            const minLoadingTime = 1000; // Minimum duration in milliseconds (1 second)
+            const elapsed = Date.now() - startTime;
+            if (elapsed < minLoadingTime) {
+                await new Promise((resolve) => setTimeout(resolve, minLoadingTime - elapsed));
+            }
+            const rfidItem = document.getElementById(item.id);
+            if (rfidItem) {
+                rfidItem.remove();
+            }
+			rfidSecuritySyncing = false;
 		}
+        return true;
 	}
 
-    function getSecuritySyncState() {
+    async function setSecuritySyncState(item: RFIDData) {
         if (mediaItem === undefined || mediaItem === null) {
             return undefined;
         }
         else if ((secured && mediaItem.status !== 'borrowed') || (!secured && mediaItem.status === 'borrowed')) {
-            return true;
+            rfidSecurityState = true;
         } else {
-            return false;
-        }
-    }
-
-    function getSecuritySyncStateText() {
-        if (mediaItem === undefined || mediaItem === null) {
-            return m.security_bit_state_unknown();
-        }
-        else if ((secured && mediaItem.status !== 'borrowed') || (!secured && mediaItem.status === 'borrowed')) {
-            return m.item_security_synced();
-        } else {
-            return m.item_security_out_of_sync();
+            if (securitySyncingActive) {
+                rfidSecurityState = await trySecuritySync(item);
+            }
+            rfidSecurityState = false;
         }
     }
 
@@ -104,6 +111,10 @@
 		loading = true;
 		fetchError = null;
 		try {
+            if (onMediaItemLoaded && !itemLoadedNotified) {
+                itemLoadedNotified = true;
+                onMediaItemLoaded(mediaItem);
+            }
 			mediaItem = await getItem({
 				barcode: item.mediaId || item.id,
 				context: checkoutContext
@@ -115,11 +126,13 @@
 			clientLogger.error('Failed to fetch media item:', error);
 			mediaItem = null;
 			fetchError = m.unable_to_load_media_information();
-			if (onMediaItemLoaded) {
+			if (onMediaItemLoaded && !itemLoadedNotified) {
+                itemLoadedNotified = true;
 				onMediaItemLoaded(null);
 			}
 		} finally {
 			loading = false;
+            await setSecuritySyncState(item);
 		}
 	}
 
@@ -193,6 +206,7 @@
 	class="rfid-item card p-1 border bg-base-100 shadow-sm {highlight
 		? 'border-2 border-error bg-error/10'
 		: 'border-base-300'}"
+    id="{item.id}"
 >
 	<div class="card-body p-1">
 		{#if loading}
@@ -281,16 +295,22 @@
 					{/if}
                     {#if showSecuritySyncState}
 						<div class="mt-2 flex flex-wrap gap-2 text-xs opacity-70">
-                            {#if rfidSecuritySynching && securitySynchingActive}
+                            {#if rfidSecuritySyncing}
                             <span class="loading loading-md loading-spinner text-primary"></span>
-                            <div class="badge badge-info badge-sm">{m.synching_security()}</div>
+                            <div class="badge badge-info badge-sm">{m.syncing_security()}</div>
                             {:else}
-                            <div class="badge {getSecuritySyncState() ? 'badge-success' : 'badge-error'} badge-sm">{getSecuritySyncStateText()}</div>
+                            <div class="badge {rfidSecurityState ? 'badge-success' : 'badge-error'} badge-sm">
+                            {#if rfidSecurityState}
+                            {m.item_security_synced()}
+                            {:else}
+                            {m.item_security_out_of_sync()}
+                            {/if}
+                            </div>
                             {/if}
 						</div>
                     {/if}
 				</div>
-				{#if (mediaItem.shelfmark || (showBin && mediaItem.returnDirective)) && !hideLocation}
+				{#if ((mediaItem.shelfmark || (showBin && mediaItem.returnDirective))) && !hideLocation}
 					<div class="flex min-w-40 items-center justify-center gap-3 text-center">
 						{#if mediaItem.shelfmark}
 							<span class="text-lg font-semibold text-base-content/70">

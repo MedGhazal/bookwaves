@@ -13,6 +13,7 @@ export const load = (async ({ cookies }) => {
 	let scannerFocusAssist = false;
 	let topAlignedModal = false;
     let autoBorrowActive = true;
+    let hideLocation = false;
 
 	try {
 		const config = getConfig();
@@ -21,6 +22,7 @@ export const load = (async ({ cookies }) => {
 		scannerFocusAssist = config.login?.scanner_focus_assist ?? false;
 		topAlignedModal = config.login?.top_aligned_modal ?? false;
         autoBorrowActive = config.checkout?.auto_borrow ?? true;
+        hideLocation = config.hide_location ?? false;
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load login config; defaulting to username/password');
 	}
@@ -36,7 +38,8 @@ export const load = (async ({ cookies }) => {
 			loginHelpImage,
 			scannerFocusAssist,
             autoBorrowActive,
-			topAlignedModal
+			topAlignedModal,
+            hideLocation
 		};
 	}
 
@@ -54,7 +57,8 @@ export const load = (async ({ cookies }) => {
 			loginHelpImage,
 			scannerFocusAssist,
             autoBorrowActive,
-			topAlignedModal
+			topAlignedModal,
+            hideLocation
 		};
 	}
 
@@ -69,7 +73,8 @@ export const load = (async ({ cookies }) => {
 			loginHelpImage,
 			scannerFocusAssist,
             autoBorrowActive,
-			topAlignedModal
+			topAlignedModal,
+            hideLocation
 		};
 	} catch (error) {
 		logger.error({ err: error }, 'Failed to load account data');
@@ -83,7 +88,8 @@ export const load = (async ({ cookies }) => {
 			loginHelpImage,
 			scannerFocusAssist,
             autoBorrowActive,
-			topAlignedModal
+			topAlignedModal,
+            hideLocation
 		};
 	}
 }) satisfies PageServerLoad;

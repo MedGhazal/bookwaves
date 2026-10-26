@@ -33,6 +33,7 @@
 	import placeBooksDefaultImage from '#lib/assets/place_book.png';
 
 	let { data }: PageProps = $props();
+    let hideLocation = $derived(data.hideLocation);
 
 	const needsLogin = $derived(data.requiresAuth || !data.account);
 	const loginMode = $derived(data.loginMode ?? 'username_password');
@@ -711,6 +712,7 @@
 												item={item.rfidData}
 												showBadges={false}
 												showBin={false}
+                                                hideLocation={hideLocation}
 												bind:this={item.component}
 												onMediaItemLoaded={(mediaItem) => handleMediaItemLoaded(item, mediaItem)}
 											/>
