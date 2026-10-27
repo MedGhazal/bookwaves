@@ -172,16 +172,16 @@ const NotificationTagEventObjectSchema = v.object({
 	eventType: v.optional(v.string()),
 	epc: v.optional(v.string()),
 	tagId: v.optional(v.string()),
-	tagType: v.optional(v.string()),
-	mediaId: v.optional(v.string()),
-	secured: v.optional(v.boolean()),
-	pc: v.optional(v.string()),
+	tagType: v.optional(v.nullable(v.string())),
+	mediaId: v.optional(v.nullable(v.string())),
+	secured: v.optional(v.nullable(v.boolean())),
+	pc: v.optional(v.nullable(v.string())),
 	rssiValues: v.optional(v.array(NotificationRssiValueSchema)),
-	readerTimestamp: v.optional(v.string()),
+	readerTimestamp: v.optional(v.nullable(v.string())),
 	stable: v.optional(v.boolean()),
 	seenCount: v.optional(v.number()),
 	presenceDurationMs: v.optional(v.number()),
-	bestRssi: v.optional(v.number())
+	bestRssi: v.optional(v.nullable(v.number()))
 });
 
 const NotificationTagEventSchema = v.pipe(
@@ -764,7 +764,9 @@ export class FeigRFIDReader implements RFIDReader {
 			rssi: rssiValue.rssi
 		}));
 
-		const timestamp = this.parseNotificationTimestamp(event.timestamp ?? event.readerTimestamp);
+		const timestamp = this.parseNotificationTimestamp(
+			event.timestamp ?? event.readerTimestamp ?? undefined
+		);
 		// Already resolved from `tagId` or `epc` by the schema.
 		const tagId = event.tagId;
 		const previous = this.lastKnownItems.get(tagId);
@@ -779,10 +781,10 @@ export class FeigRFIDReader implements RFIDReader {
 			timestamp,
 			secured: event.secured ?? previous?.secured,
 			antennaRssi,
-			stable: event.stable,
-			seenCount: event.seenCount,
-			presenceDurationMs: event.presenceDurationMs,
-			bestRssi: event.bestRssi
+			stable: event.stable ?? undefined,
+			seenCount: event.seenCount ?? undefined,
+			presenceDurationMs: event.presenceDurationMs ?? undefined,
+			bestRssi: event.bestRssi ?? undefined
 		};
 	}
 
