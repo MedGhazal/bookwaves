@@ -5,7 +5,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
-	import { createReaderFromParams } from '#lib/stores/reader-selection.js';
+	import { createReaderFromParams, getReaderConfigProblem } from '#lib/stores/reader-selection.js';
 	import type { RFIDData } from '#lib/reader/interface.js';
 	import { page } from '$app/state';
 	import { clientLogger } from '#lib/client/logger.js';
@@ -29,6 +29,10 @@
 	const readerWarning = $derived(
 		readerError ?? (missingReaderParams ? m.reader_configuration_missing_message() : null)
 	);
+	// Distinguishes "no reader selected yet" (normal) from "the configured middleware's type is
+	// not one BookWaves recognises" (a real configuration problem) so both stop reading as the
+	// same reader_not_configured state.
+	const readerConfigProblem = $derived(getReaderConfigProblem(data.readerConfig.middlewareType));
 	const noMediaFoundImageUrl = $derived(
 		data.checkoutConfig?.noMediaFoundImageUrl || placeBooksDefaultImage
 	);
@@ -85,7 +89,12 @@
 			clientLogger.error(
 				'No reader configured. Please configure a reader via URL params or admin page.'
 			);
-			readerError = m.no_reader_found_while_listing_message();
+			readerError =
+				readerConfigProblem === 'unknown_middleware_type'
+					? m.reader_type_not_recognised_message({
+							type: data.readerConfig.middlewareType ?? ''
+						})
+					: m.no_reader_found_while_listing_message();
 			return;
 		}
 
@@ -141,7 +150,11 @@
 		{#if readerWarning}
 			<div class="mb-6 alert alert-warning shadow-lg">
 				<div>
-					<strong>{m.reader_not_configured()}</strong>
+					<strong
+						>{readerConfigProblem === 'unknown_middleware_type'
+							? m.reader_misconfigured()
+							: m.reader_not_configured()}</strong
+					>
 					{readerWarning}
 					{m.contact_staff()}
 				</div>

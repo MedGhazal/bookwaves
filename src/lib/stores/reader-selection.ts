@@ -2,6 +2,10 @@ import type { RFIDReader } from '#lib/reader/interface.js';
 import { FeigRFIDReader } from '#lib/reader/feig.js';
 import { mockRFIDReader } from '#lib/reader/mock.js';
 import { clientLogger } from '#lib/client/logger.js';
+import {
+	isKnownMiddlewareType,
+	describeKnownMiddlewareTypes
+} from '#lib/reader/middlewareTypes.js';
 
 /**
  * Helper functions to get the currently selected reader from localStorage
@@ -48,8 +52,8 @@ export function getSelectedReaderConfig(): {
 
 /**
  * Create an RFIDReader instance from the stored selection
- * @param middlewareUrl Optional URL override for the middleware (for Feig readers)
- * @param middlewareType The type of middleware (feig, mock, etc.)
+ * @param middlewareUrl Optional URL override for the middleware (for feig/http readers)
+ * @param middlewareType The type of middleware (feig, http, mock, etc.)
  * @returns RFIDReader instance or null if no reader is selected
  */
 export function createReaderFromSelection(
@@ -61,18 +65,25 @@ export function createReaderFromSelection(
 
 	const type = middlewareType?.toLowerCase() || 'feig';
 
+	if (!isKnownMiddlewareType(type)) {
+		clientLogger.warn(
+			`Unrecognised middleware type "${middlewareType}". Recognised types: ${describeKnownMiddlewareTypes()}`
+		);
+		return null;
+	}
+
 	switch (type) {
 		case 'mock':
 			return mockRFIDReader;
 
 		case 'feig':
+		case 'http':
 			return new FeigRFIDReader({
 				baseUrl: middlewareUrl,
 				readerName: config.reader
 			});
 
 		default:
-			clientLogger.warn(`Unknown middleware type: ${type}`);
 			return null;
 	}
 }
@@ -102,8 +113,8 @@ export function getReaderConfigWithParams(
  * Priority: URL params > localStorage > null
  * @param middlewareId Middleware ID from URL params
  * @param readerId Reader ID from URL params
- * @param middlewareUrl Middleware URL (for Feig readers)
- * @param middlewareType Middleware type (feig, mock, etc.)
+ * @param middlewareUrl Middleware URL (for feig/http readers)
+ * @param middlewareType Middleware type (feig, http, mock, etc.)
  * @returns RFIDReader instance or null
  */
 export function createReaderFromParams(
@@ -129,13 +140,21 @@ export function createReaderFromParams(
 		url: middlewareUrl
 	});
 
+	if (!isKnownMiddlewareType(type)) {
+		clientLogger.warn(
+			`Unrecognised middleware type "${middlewareType}". Recognised types: ${describeKnownMiddlewareTypes()}`
+		);
+		return null;
+	}
+
 	switch (type) {
 		case 'mock':
 			return mockRFIDReader;
 
 		case 'feig':
+		case 'http':
 			if (!middlewareUrl) {
-				clientLogger.error('Feig reader requires a middleware URL');
+				clientLogger.error(`"${type}" reader requires a middleware URL`);
 				return null;
 			}
 			return new FeigRFIDReader({
@@ -144,7 +163,23 @@ export function createReaderFromParams(
 			});
 
 		default:
-			clientLogger.warn(`Unknown middleware type: ${type}`);
 			return null;
 	}
+}
+
+/**
+ * Explains, for the checkout list and gate pages, why `createReaderFromParams` returned `null`
+ * when the URL already names a middleware — distinguishing "the operator has not selected a
+ * reader yet" (normal, not an error) from "this middleware's type is not one BookWaves
+ * recognises" (a real configuration problem). Those two used to collapse into the same
+ * `reader_not_configured` message, which is why an unrecognised type read as a normal,
+ * unconfigured state instead of a problem worth fixing. Returns `null` when there is no
+ * evidence of a type-related problem (including when no type was supplied at all, which is the
+ * ordinary "nothing selected yet" case).
+ */
+export function getReaderConfigProblem(
+	middlewareType?: string | null
+): 'unknown_middleware_type' | null {
+	if (!middlewareType) return null;
+	return isKnownMiddlewareType(middlewareType.toLowerCase()) ? null : 'unknown_middleware_type';
 }

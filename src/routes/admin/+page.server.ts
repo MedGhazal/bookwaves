@@ -8,6 +8,7 @@ export const load = (async () => {
 		loginMode: config.login?.mode,
 		lmsApiKeyMasked: config.lms.api_key ? '*** configured ***' : '*** not set ***',
 		middlewareReaders,
+		middlewareConfigProblems: config.middlewareConfigProblems,
 		checkoutProfiles: config.checkout?.profiles ?? []
 	};
 }) satisfies PageServerLoad;

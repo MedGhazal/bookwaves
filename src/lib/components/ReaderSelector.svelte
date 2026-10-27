@@ -12,6 +12,8 @@
 	type MiddlewareReaders = {
 		instance: MiddlewareInstanceConfig;
 		readers: ReaderInfo[];
+		/** Set when readers could not be fetched for this instance (e.g. an unrecognised type). */
+		error?: string;
 	};
 
 	let { middlewareReaders = [] }: { middlewareReaders: MiddlewareReaders[] } = $props();
@@ -155,4 +157,11 @@
 			</span>
 		{/if}
 	</div>
+
+	{#if currentMiddleware?.error}
+		<!-- A failed fetch (e.g. an unrecognised middleware type) must not look like "no readers". -->
+		<div role="alert" class="w-full rounded-md bg-error/80 px-3 py-2 text-xs text-error-content">
+			{currentMiddleware.error}
+		</div>
+	{/if}
 </div>

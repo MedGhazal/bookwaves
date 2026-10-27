@@ -5,6 +5,19 @@ import { type LogLevel, parseLogLevel } from '#lib/logger/levels.js';
 import { locales, type Locale } from '#lib/paraglide/runtime.js';
 import type { LoginHelpImageConfig } from '#lib/types/login.js';
 import type { CoverImageProvider } from './lms/cover-image-provider';
+import {
+	isKnownMiddlewareType,
+	unknownMiddlewareTypeMessage
+} from '#lib/reader/middlewareTypes.js';
+
+// Deliberately does not import '#lib/server/logger.js' here: that module calls getConfig() at
+// module-evaluation time to resolve its log level, so importing it back into this file would
+// create a config.ts <-> logger.ts import cycle. Depending on which module a given code path
+// happens to load first, that cycle can hit `cachedConfig` in its temporal dead zone below.
+// Problems found while validating config are therefore returned as data (see
+// `MiddlewareConfigProblem` / `middlewareConfigProblems`) rather than logged here; callers that
+// already import the logger safely (e.g. `reader/factory.ts`, `server/middlewareReaders.ts`)
+// are responsible for logging them.
 
 export type LoginMode =
 	| 'username_password'
@@ -39,6 +52,18 @@ export interface MiddlewareInstanceConfig {
 	type: string;
 	url?: string; // Optional: not needed for mock middleware
 	internal_url?: string; // Optional: used by the server instead of `url`; required when `url` is relative
+}
+
+/**
+ * A problem found in `middleware_instances` while parsing config — currently, only "this entry's
+ * type is not one BookWaves recognises". Collected rather than thrown so that one misconfigured
+ * entry does not prevent config from loading at all, which would take down every middleware
+ * instance (including correctly-configured ones) rather than just the bad entry.
+ */
+export interface MiddlewareConfigProblem {
+	id: string;
+	type: string;
+	message: string;
 }
 
 export interface LoginConfig {
@@ -170,6 +195,11 @@ export interface LMSConfig {
 	middleware_instances: MiddlewareInstanceConfig[];
 	/** Raw YAML; validated into `ReturnDirective[]` by `parseGlobalReturnDirectives`. */
 	global_return_directives?: unknown;
+	/**
+	 * Populated by `normalizeConfigData` at config-load time. Empty when every
+	 * `middleware_instances` entry has a recognised `type`.
+	 */
+	middlewareConfigProblems: MiddlewareConfigProblem[];
 }
 
 const DEFAULT_LOGIN_MODE: LoginMode = 'username_password';
@@ -636,6 +666,9 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 
 	const lmsType = typeof data.lms?.type === 'string' ? data.lms.type : '';
 	const globalReturnDirectives = parseGlobalReturnDirectives(data);
+	// Different lookups resolve a duplicated id to different profiles, so a terminal could
+	// borrow at one desk and route returns from another.
+	const seenIds = new Set<string>();
 
 	return data.checkout.profiles.map((profile, index) => {
 		if (!profile || typeof profile !== 'object') {
@@ -658,6 +691,10 @@ function parseCheckoutProfiles(data: LMSConfig): CheckoutProfileConfig[] {
 				`Invalid configuration: checkout.profiles[${index}] must include id, library, and circulation_desk`
 			);
 		}
+		if (seenIds.has(id)) {
+			throw new Error(`Invalid configuration: duplicate checkout.profiles id "${id}"`);
+		}
+		seenIds.add(id);
 		if (!type) {
 			throw new Error(
 				'Invalid configuration: lms.type is required when checkout profiles are defined'
@@ -684,6 +721,50 @@ function parseCheckoutConfig(data: LMSConfig): CheckoutConfig {
 			validateSource(data.checkout?.no_media_found_image) ??
 			DEFAULT_CHECKOUT_CONFIG.no_media_found_image
 	};
+}
+
+/**
+ * Checks every `middleware_instances` entry's `type` against the recognised set in
+ * `$lib/reader/middlewareTypes`. Returns one problem per unrecognised entry instead of
+ * throwing, so a typo in one entry's `type` does not stop config from loading for the whole
+ * installation — the other, correctly-configured instances must keep working.
+ *
+ * This is "startup validation" in the sense that it runs once, during config parsing, and the
+ * result is cached for the life of the process alongside the rest of the config — not
+ * re-evaluated per request. See the Admin page and `reader/factory.ts` for where these
+ * problems (and the matching per-instance failure when something actually tries to use a bad
+ * entry) are surfaced to an operator.
+ */
+function validateMiddlewareInstanceTypes(
+	instances: MiddlewareInstanceConfig[]
+): MiddlewareConfigProblem[] {
+	const problems: MiddlewareConfigProblem[] = [];
+
+	for (const [index, instance] of instances.entries()) {
+		if (
+			!instance ||
+			typeof instance !== 'object' ||
+			Array.isArray(instance) ||
+			typeof instance.id !== 'string' ||
+			!instance.id.trim() ||
+			typeof instance.type !== 'string' ||
+			!instance.type.trim()
+		) {
+			throw new Error(
+				`Invalid configuration: middleware_instances[${index}] must be an object with non-empty string id and type`
+			);
+		}
+		const type = instance.type;
+		if (isKnownMiddlewareType(type)) continue;
+
+		problems.push({
+			id: instance.id,
+			type: instance.type,
+			message: unknownMiddlewareTypeMessage(instance.id, instance.type)
+		});
+	}
+
+	return problems;
 }
 
 function validateConfigData(data: LMSConfig, requireTaggingFormats: boolean): void {
@@ -731,6 +812,7 @@ function normalizeConfigData(data: LMSConfig, requireTaggingFormats: boolean): L
 	data.tagging = parseTaggingConfig(data);
 	data.checkout = parseCheckoutConfig(data);
 	data.theme = parseThemeConfig(data.theme);
+	data.middlewareConfigProblems = validateMiddlewareInstanceTypes(data.middleware_instances);
 
 	return data;
 }
@@ -890,20 +972,27 @@ theme:
 
 middleware_instances:
   #- id: feig1
-  #  type: feig # Middleware vendor/type: feig, bibliotheca, etc.
+  #  type: http # Any middleware speaking the BookWaves middleware protocol; the older feig also still works
   #  url: http://localhost:7070
   - id: mock1
     type: mock # Mock middleware for testing (no URL needed)
 `;
 let cachedConfig: LMSConfig | null = null;
 
+/**
+ * Parses and validates configuration YAML, throwing on the first invalid entry. `getConfig`
+ * reads the source from disk; this takes it directly so the rules can be exercised in tests.
+ */
+export function parseConfigSource(source: string, requireTaggingFormats = false): LMSConfig {
+	return normalizeConfigData(YAML.parse(source) as LMSConfig, requireTaggingFormats);
+}
+
 export function getConfig(): LMSConfig {
 	if (cachedConfig) return cachedConfig;
 
 	if (process.env.VERCEL) {
-		const data = YAML.parse(EMBEDDED_CONFIG_YAML) as LMSConfig;
-		cachedConfig = normalizeConfigData(data, true);
-		return data;
+		cachedConfig = parseConfigSource(EMBEDDED_CONFIG_YAML, true);
+		return cachedConfig;
 	}
 
 	const allowMissing = process.env.ALLOW_MISSING_CONFIG === 'true';
@@ -932,15 +1021,14 @@ export function getConfig(): LMSConfig {
 			tagging: DEFAULT_TAGGING_CONFIG,
 			checkout: DEFAULT_CHECKOUT_CONFIG,
 			theme: parseThemeConfig(undefined),
-			middleware_instances: []
+			middleware_instances: [],
+			middlewareConfigProblems: []
 		};
 		return cachedConfig;
 	}
 
-	const fileContents = fs.readFileSync(filePath, 'utf8');
-	const data = YAML.parse(fileContents) as LMSConfig;
-	cachedConfig = normalizeConfigData(data, false);
-	return data;
+	cachedConfig = parseConfigSource(fs.readFileSync(filePath, 'utf8'));
+	return cachedConfig;
 }
 
 export function clearConfigCache(): void {

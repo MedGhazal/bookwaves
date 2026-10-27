@@ -7,7 +7,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import type { SvelteComponent } from 'svelte';
-	import { createReaderFromParams } from '#lib/stores/reader-selection.js';
+	import { createReaderFromParams, getReaderConfigProblem } from '#lib/stores/reader-selection.js';
 	import type { RFIDData, RFIDReader } from '#lib/reader/interface.js';
 	import { returnItem } from '#lib/lms/lms.remote.js';
 	import type { LmsActionResult, LmsReturnDirective, MediaItem } from '#lib/lms/lms.js';
@@ -52,6 +52,7 @@
 	const checkoutContext = $derived(
 		checkoutProfileId && checkoutProfileRequired ? { checkoutProfileId } : undefined
 	);
+	const readerConfigProblem = $derived(getReaderConfigProblem(data.readerConfig.middlewareType));
 	let readerError: string | null = $state(null);
 	const readerWarning = $derived(
 		readerError ?? (missingReaderParams ? m.reader_configuration_missing_message() : null)
@@ -405,7 +406,12 @@
 			clientLogger.error(
 				'No reader configured. Please configure a reader via URL params or admin page.'
 			);
-			readerError = m.no_reader_found_while_returning_message();
+			readerError =
+				readerConfigProblem === 'unknown_middleware_type'
+					? m.reader_type_not_recognised_message({
+							type: data.readerConfig.middlewareType ?? ''
+						})
+					: m.no_reader_found_while_returning_message();
 			return;
 		}
 
@@ -477,7 +483,9 @@
 		{#if workflowWarning}
 			<div class="mb-6 alert alert-warning shadow-lg">
 				<div>
-					<strong>{m.configuration_missing()}.</strong>
+					<strong
+						>{readerConfigProblem ? m.reader_misconfigured() : m.configuration_missing()}.</strong
+					>
 					{workflowWarning}
 					{m.contact_staff()}.
 				</div>

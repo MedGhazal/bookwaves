@@ -43,8 +43,9 @@ login:
 # Declare every cart once here, then reference it per terminal under
 # checkout.profiles[].return_directives. Directives are evaluated in the order
 # they appear and the FIRST match wins, so put specific carts above general ones.
-# The last cart must be a catch-all (when.always: true) or the server refuses to
-# start, so that every returned item gets an instruction.
+# At least one cart must be a catch-all (when.always: true) or the configuration
+# is rejected, so that every returned item gets an instruction. Put it last: carts
+# below a catch-all are never reached.
 #
 # A `when` condition combines:
 #   any    - at least one of these rules must match
@@ -60,8 +61,8 @@ login:
 #
 # Only these fields may be matched on: process_type, library_code,
 # location_code, shelving_library_code, shelving_location_code, has_request and
-# pickup_location_library. Anything else is rejected at startup rather than
-# silently never matching.
+# pickup_location_library. Anything else is rejected as a configuration error rather
+# than silently never matching.
 #
 # Prefer shelving_library_code and shelving_location_code: they say where the
 # item belongs right now, following a temporary location such as a
@@ -259,7 +260,7 @@ theme:
 
 middleware_instances:
   #- id: feig1
-  #  type: feig # Middleware vendor/type: feig, bibliotheca, etc.
+  #  type: http # Any middleware speaking the BookWaves middleware protocol; the older "feig" also still works
   #  url: http://localhost:7070 # Used by the browser; may be relative (e.g. /feig) behind a proxy
   #  internal_url: http://feig:7070 # Optional: used by the server instead of url; required when url is relative
   - id: mock1

@@ -5,6 +5,11 @@ import { mockRFIDReader } from '#lib/reader/mock.js';
 import type { MiddlewareInstanceConfig } from '#lib/server/config.js';
 import { getConfig } from '#lib/server/config.js';
 import { logger } from '#lib/server/logger.js';
+import {
+	isKnownMiddlewareType,
+	describeKnownMiddlewareTypes,
+	UnknownMiddlewareTypeError
+} from '#lib/reader/middlewareTypes.js';
 
 export interface ResolvedReader {
 	reader: RFIDReader;
@@ -35,10 +40,23 @@ function createReaderInstance(
 	instance: MiddlewareInstanceConfig,
 	info: ReaderInfo
 ): RFIDReader | null {
-	switch (instance.type.toLowerCase()) {
+	const type = instance.type.toLowerCase();
+
+	if (!isKnownMiddlewareType(type)) {
+		// Configuration error: named and logged distinctly from "reader instance creation
+		// failed for an operational reason" (e.g. an unreachable Feig middleware).
+		logger.error(
+			{ instance: instance.id, type: instance.type },
+			`Unrecognised middleware type. Recognised types: ${describeKnownMiddlewareTypes()}`
+		);
+		return null;
+	}
+
+	switch (type) {
 		case 'mock':
 			return mockRFIDReader;
 		case 'feig':
+		case 'http':
 			try {
 				return new FeigRFIDReader({
 					baseUrl: getServerMiddlewareUrl(instance),
@@ -47,13 +65,17 @@ function createReaderInstance(
 			} catch (error) {
 				logger.error(
 					{ err: error, instance: instance.id },
-					'Invalid middleware URL for Feig reader'
+					`Invalid middleware URL for "${type}" reader`
 				);
 				return null;
 			}
-		default:
-			logger.warn({ type: instance.type }, 'Unsupported middleware type');
+		default: {
+			logger.error(
+				{ instance: instance.id, type },
+				'Middleware type recognised but not implemented in createReaderInstance'
+			);
 			return null;
+		}
 	}
 }
 
@@ -71,7 +93,11 @@ export async function resolveReaderByIp(readerIp: string): Promise<ResolvedReade
 		try {
 			readers = await getAllReaders(instance);
 		} catch (error) {
-			logger.error({ err: error, instance: instance.id }, 'Failed to load readers for middleware');
+			const message =
+				error instanceof UnknownMiddlewareTypeError
+					? 'Skipping middleware with unrecognised type while resolving reader by IP'
+					: 'Failed to load readers for middleware';
+			logger.error({ err: error, instance: instance.id }, message);
 			continue;
 		}
 

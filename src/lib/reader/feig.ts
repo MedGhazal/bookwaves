@@ -16,6 +16,14 @@ export interface FeigReaderConfig {
 	readerName: string;
 }
 
+// Names the tag an operation targets. `tagId` is the protocol-neutral name; `epc` carries the
+// same value for middlewares released before they accepted `tagId`, so a BookWaves upgrade does
+// not have to wait for every middleware to be upgraded first.
+const tagIdQuery = (tagId: string): string => {
+	const encoded = encodeURIComponent(tagId);
+	return `tagId=${encoded}&epc=${encoded}`;
+};
+
 // Normalize middleware base URLs so relative paths work both client- and server-side.
 const normalizeBaseUrl = (url?: string): string => {
 	const raw = url || 'http://localhost:7070';
@@ -154,22 +162,33 @@ const NotificationRssiValueSchema = v.object({
 	rssi: v.number()
 });
 
-const NotificationTagEventSchema = v.object({
+// A tag event names its tag as `tagId`, the protocol-neutral name (see the middleware protocol
+// specification's protocol-agnostic tag identifier), or as `epc`, the name middlewares used
+// before it. Either is enough; when both are sent they carry the same value and `tagId` wins.
+// The parsed event always has `tagId` set.
+const NotificationTagEventObjectSchema = v.object({
 	readerName: v.optional(v.string()),
 	timestamp: v.optional(v.string()),
 	eventType: v.optional(v.string()),
-	epc: v.string(),
-	tagType: v.optional(v.string()),
-	mediaId: v.optional(v.string()),
-	secured: v.optional(v.boolean()),
-	pc: v.optional(v.string()),
+	epc: v.optional(v.string()),
+	tagId: v.optional(v.string()),
+	tagType: v.optional(v.nullable(v.string())),
+	mediaId: v.optional(v.nullable(v.string())),
+	secured: v.optional(v.nullable(v.boolean())),
+	pc: v.optional(v.nullable(v.string())),
 	rssiValues: v.optional(v.array(NotificationRssiValueSchema)),
-	readerTimestamp: v.optional(v.string()),
+	readerTimestamp: v.optional(v.nullable(v.string())),
 	stable: v.optional(v.boolean()),
 	seenCount: v.optional(v.number()),
 	presenceDurationMs: v.optional(v.number()),
-	bestRssi: v.optional(v.number())
+	bestRssi: v.optional(v.nullable(v.number()))
 });
+
+const NotificationTagEventSchema = v.pipe(
+	NotificationTagEventObjectSchema,
+	v.check((event) => Boolean(event.tagId || event.epc), 'Tag event names no tag (tagId or epc)'),
+	v.transform((event) => ({ ...event, tagId: (event.tagId || event.epc) as string }))
+);
 
 type NotificationTagEvent = v.InferOutput<typeof NotificationTagEventSchema>;
 
@@ -245,7 +264,7 @@ export class FeigRFIDReader implements RFIDReader {
 			const useNotificationEndpoint = await this.isNotificationMode();
 			const endpoint = useNotificationEndpoint ? 'notification/secure' : 'secure';
 			const response = await fetch(
-				`${this.baseUrl}/${endpoint}/${this.readerName}?epc=${encodeURIComponent(epc)}`,
+				`${this.baseUrl}/${endpoint}/${this.readerName}?${tagIdQuery(epc)}`,
 				{ method: 'POST' }
 			);
 
@@ -278,7 +297,7 @@ export class FeigRFIDReader implements RFIDReader {
 			const useNotificationEndpoint = await this.isNotificationMode();
 			const endpoint = useNotificationEndpoint ? 'notification/unsecure' : 'unsecure';
 			const response = await fetch(
-				`${this.baseUrl}/${endpoint}/${this.readerName}?epc=${encodeURIComponent(epc)}`,
+				`${this.baseUrl}/${endpoint}/${this.readerName}?${tagIdQuery(epc)}`,
 				{ method: 'POST' }
 			);
 
@@ -377,7 +396,7 @@ export class FeigRFIDReader implements RFIDReader {
 	}> {
 		try {
 			const response = await fetch(
-				`${this.baseUrl}/edit/${this.readerName}?epc=${encodeURIComponent(epc)}&mediaId=${encodeURIComponent(mediaId)}`,
+				`${this.baseUrl}/edit/${this.readerName}?${tagIdQuery(epc)}&mediaId=${encodeURIComponent(mediaId)}`,
 				{ method: 'POST' }
 			);
 
@@ -410,10 +429,9 @@ export class FeigRFIDReader implements RFIDReader {
 		message?: string;
 	}> {
 		try {
-			const response = await fetch(
-				`${this.baseUrl}/clear/${this.readerName}?epc=${encodeURIComponent(epc)}`,
-				{ method: 'POST' }
-			);
+			const response = await fetch(`${this.baseUrl}/clear/${this.readerName}?${tagIdQuery(epc)}`, {
+				method: 'POST'
+			});
 
 			const result = await response.json();
 			return {
@@ -436,9 +454,7 @@ export class FeigRFIDReader implements RFIDReader {
 
 	async analyze(epc: string): Promise<AnalyzeResult> {
 		try {
-			const response = await fetch(
-				`${this.baseUrl}/analyze/${this.readerName}?epc=${encodeURIComponent(epc)}`
-			);
+			const response = await fetch(`${this.baseUrl}/analyze/${this.readerName}?${tagIdQuery(epc)}`);
 
 			const result = await response.json();
 			const parsed = v.safeParse(AnalyzeResponseSchema, result);
@@ -748,11 +764,15 @@ export class FeigRFIDReader implements RFIDReader {
 			rssi: rssiValue.rssi
 		}));
 
-		const timestamp = this.parseNotificationTimestamp(event.timestamp ?? event.readerTimestamp);
-		const previous = this.lastKnownItems.get(event.epc);
+		const timestamp = this.parseNotificationTimestamp(
+			event.timestamp ?? event.readerTimestamp ?? undefined
+		);
+		// Already resolved from `tagId` or `epc` by the schema.
+		const tagId = event.tagId;
+		const previous = this.lastKnownItems.get(tagId);
 
 		return {
-			id: event.epc,
+			id: tagId,
 			data: event.mediaId ?? previous?.data,
 			mediaId: event.mediaId ?? previous?.mediaId,
 			tagType: event.tagType ?? previous?.tagType,
@@ -761,10 +781,10 @@ export class FeigRFIDReader implements RFIDReader {
 			timestamp,
 			secured: event.secured ?? previous?.secured,
 			antennaRssi,
-			stable: event.stable,
-			seenCount: event.seenCount,
-			presenceDurationMs: event.presenceDurationMs,
-			bestRssi: event.bestRssi
+			stable: event.stable ?? undefined,
+			seenCount: event.seenCount ?? undefined,
+			presenceDurationMs: event.presenceDurationMs ?? undefined,
+			bestRssi: event.bestRssi ?? undefined
 		};
 	}
 

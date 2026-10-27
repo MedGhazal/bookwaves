@@ -5,6 +5,7 @@
 	import * as lms from '#lib/lms/lms.remote.js';
 	import { clientLogger } from '#lib/client/logger.js';
 	import { m } from '#lib/paraglide/messages.js';
+	import { Info } from '@lucide/svelte';
 
 	let { data }: PageProps = $props();
 	let username = $state('');
@@ -150,11 +151,29 @@
 								</div>
 							</div>
 						</div>
+
+						<!-- Middleware configuration problems -->
+						{#if data.middlewareConfigProblems.length > 0}
+							<div>
+								<h3 class="mb-2 text-xl font-semibold text-error">
+									{m.configuration_problem_heading()}
+								</h3>
+								<div class="space-y-2">
+									{#each data.middlewareConfigProblems as problem (problem.id)}
+										<div class="alert alert-error">
+											<Info />
+											<span>{problem.message}</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
 						<!-- Middleware Instances & Readers -->
 						<div>
 							<h3 class="mb-2 text-xl font-semibold">{m.middleware_instances()} & {m.readers()}</h3>
 							<div class="space-y-4">
-								{#each data.middlewareReaders as { instance, readers } (instance.id)}
+								{#each data.middlewareReaders as { instance, readers, error } (instance.id)}
 									<div class="rounded-lg bg-base-200 p-4">
 										<div class="mb-3 grid grid-cols-2 gap-2 border-b border-base-300 pb-3">
 											<div class="font-semibold">Middleware ID:</div>
@@ -190,9 +209,15 @@
 														</div>
 													</div>
 												{:else}
-													<div class="text-sm text-base-content/60 italic">
-														{m.no_readers_available()}
-													</div>
+													{#if error}
+														<div class="alert text-sm alert-error">
+															<span>{error}</span>
+														</div>
+													{:else}
+														<div class="text-sm text-base-content/60 italic">
+															{m.no_readers_available()}
+														</div>
+													{/if}
 												{/each}
 											</div>
 										</div>
