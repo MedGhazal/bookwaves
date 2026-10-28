@@ -222,6 +222,10 @@ checkout:
 # Security gate display configuration
 gate:
   show_all_detected_items: true # If false, only secured items are shown/warned
+  # Defaults to false. if true:
+  # the flex-direction in the gate is row 
+  # Cover Pages are displayed
+  compact: false 
 
 tagging:
   whitelist:

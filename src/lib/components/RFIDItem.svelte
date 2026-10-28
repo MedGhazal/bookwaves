@@ -11,7 +11,7 @@
 	let {
 		item,
 		highlight = false,
-        gate=false,
+        hideCoverPage=false,
 		showRfidDetails = false,
 		onMediaItemLoaded,
 		showBadges = true,
@@ -27,7 +27,7 @@
 	}: {
 		item: RFIDData;
 		highlight?: boolean;
-        gate?: boolean;
+        hideCoverPage?: boolean;
 		showRfidDetails?: boolean;
 		onMediaItemLoaded?: (mediaItem: MediaItem | null) => void;
 		showBadges?: boolean;
@@ -211,7 +211,7 @@
 	<div class="card-body p-1">
 		{#if loading}
 			<div class="flex items-start gap-3">
-                {#if !gate} 
+                {#if !hideCoverPage} 
 				<div class="h-45 w-32 shrink-0 skeleton rounded-box"></div>
                 {/if}
 				<div class="flex min-w-0 flex-1 flex-col gap-3">
@@ -233,7 +233,7 @@
 		{:else if mediaItem}
 			<!-- Media Item Information -->
 			<div class="flex items-stretch gap-3">
-                {#if !gate}
+                {#if !hideCoverPage}
 				<div class="h-[180px] w-[120px] shrink-0">
 					{#if mediaItem.cover}
 						<img

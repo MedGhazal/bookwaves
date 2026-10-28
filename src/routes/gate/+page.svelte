@@ -16,6 +16,7 @@
 	let detectedItems: Array<RFIDData> = $state([]);
 	let showAllDetectedItems = $derived(data.gateConfig?.showAllDetectedItems ?? true);
     const hideLocation = $derived(data.gateConfig?.hideLocation ?? false);
+    const compact = $derived(data.gateConfig?.compact ?? false);
 	let visibleItems = $derived(
 		showAllDetectedItems ? detectedItems : detectedItems.filter((item) => item.secured)
 	);
@@ -137,10 +138,11 @@
     {/if}
 
     <div class="mx-auto max-w-7xl w-full flex flex-1 min-h-0
-        {detectedItems.length === 0 ? 'flex-row justify-center items-center' : 'flex-row items-stretch gap-8'}">
+        {!compact ? 'flex-col' : 'flex-row'}
+        {!compact || detectedItems.length === 0 ? 'justify-center items-center' : 'items-stretch gap-8'}">
         
         <div class="flex flex-col justify-start w-max
-            {detectedItems.length === 0 ? 'items-center text-center justify-center' : 'w-96 shrink-0 justify-center'}">
+            {compact || detectedItems.length === 0 ? 'items-center text-center justify-center' : 'w-96 shrink-0 justify-center'}">
             <PageHeader title={m.gate_label()} showLogo />
 
             <div class="my-6 flex items-center justify-center">
@@ -169,8 +171,8 @@
             </div>
         </div>
 
-        {#if detectedItems.length > 0}
-            <div class="flex-1 min-w-0 flex flex-col gap-4 min-h-0 justify-center">
+        {#if !compact || detectedItems.length > 0}
+            <div class="flex-1 min-w-0 flex flex-col gap-4 min-h-0 justify-center w-full">
                 {#if detectedItems.some((item) => item.secured)}
                     <div class="alert border-4 border-white alert-error text-white shadow-2xl flex items-center shrink-0">
                         <AlertTriangle class="h-16 w-16 shrink-0" />
@@ -195,7 +197,7 @@
                                     animate:flip={{ duration: 200 }}
                                 >
                                     <div class="p-2 hover:bg-base-200 {item.secured ? 'bg-error/10' : ''}">
-                                        <RFIDItem {item} highlight={item.secured} showBadges={false} showBin={false} gate={true} {hideLocation}/>
+                                        <RFIDItem {item} highlight={item.secured} showBadges={false} showBin={false} hideCoverPage={compact} {hideLocation}/>
                                     </div>
                                 </li>
                             {:else}

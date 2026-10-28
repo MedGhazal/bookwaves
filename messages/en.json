@@ -255,5 +255,7 @@
     "return_all": "Return all",
     "format": "Format",
     "syncing_security": "Syncing Security...",
-	"na": "N/A"
+	"na": "N/A",
+    "item_security_out_of_sync": "Out of sync",
+    "item_security_synced": "In Sync"
 }

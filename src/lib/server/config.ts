@@ -29,6 +29,7 @@ export type LoginMode =
 export type LoginValidationImplementation = 'campus_id';
 
 export interface GateConfig {
+    compact?: boolean;
 	show_all_detected_items?: boolean;
 }
 
@@ -213,7 +214,8 @@ const VALID_LOGIN_MODES: LoginMode[] = [
 	'username_password_or_pin'
 ];
 const DEFAULT_GATE_CONFIG: Required<GateConfig> = {
-	show_all_detected_items: true
+	show_all_detected_items: true,
+    compact: false,
 };
 const DEFAULT_TAGGING_CONFIG: Required<TaggingConfig> = {
 	whitelist: {
@@ -333,7 +335,11 @@ function parseGateConfig(data: LMSConfig): GateConfig {
 		show_all_detected_items:
 			typeof data.gate?.show_all_detected_items === 'boolean'
 				? data.gate.show_all_detected_items
-				: DEFAULT_GATE_CONFIG.show_all_detected_items
+				: DEFAULT_GATE_CONFIG.show_all_detected_items,
+		compact:
+			typeof data.gate?.compact === 'boolean'
+				? data.gate.compact
+				: DEFAULT_GATE_CONFIG.compact
 	};
 }
 
@@ -934,6 +940,10 @@ checkout:
 # Security gate display configuration
 gate:
   show_all_detected_items: true # If false, only secured items are shown/warned
+  # Defaults to false. if true:
+  # the flex-direction in the gate is row 
+  # Cover Pages are displayed
+  compact: false 
 
 tagging:
   whitelist:
